@@ -31,8 +31,9 @@
             color: #f3f4f6;
             min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
         }
         .card {
             transition: all 0.3s ease-in-out;
@@ -75,6 +76,7 @@
         const modalTitle = document.getElementById('modal-title');
         const modalMessage = document.getElementById('modal-message');
         const modalCloseBtn = document.getElementById('modal-close-btn');
+        const dataSyncBtn = document.getElementById('data-sync-btn');
         
         let userId;
         let currentUser;
@@ -87,9 +89,7 @@
         function showModal(title, message, callback = null) {
             modalTitle.textContent = title;
             modalMessage.textContent = message;
-            modal.classList.remove('hidden');
             
-            // Setzt den Event-Listener dynamisch
             const newModalCloseBtn = modalCloseBtn.cloneNode(true);
             modalCloseBtn.parentNode.replaceChild(newModalCloseBtn, modalCloseBtn);
             newModalCloseBtn.addEventListener('click', () => {
@@ -98,6 +98,8 @@
                     callback();
                 }
             });
+
+            modal.classList.remove('hidden');
         }
 
         // Rendert das Anmeldeformular für den Spitznamen.
@@ -870,31 +872,110 @@
             updateUI();
         }
 
-        // Event-Listener für Buttons hinzufügen
-        document.addEventListener('DOMContentLoaded', () => {
-            const clearDataBtn = document.createElement('button');
-            clearDataBtn.textContent = 'Alle Daten löschen';
-            clearDataBtn.classList.add('fixed', 'bottom-4', 'right-4', 'bg-secondary', 'text-white', 'py-2', 'px-4', 'rounded-full', 'shadow-lg', 'hover:bg-red-600', 'transition-colors', 'z-40');
-            clearDataBtn.onclick = () => {
+        function showDataSyncModal() {
+            // Speichere den aktuellen Inhalt des Modals, um ihn wiederherzustellen
+            const originalModalContent = modal.innerHTML;
+
+            const modalContent = `
+                <div class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
+                    <h3 class="text-xl font-bold text-primary mb-4">Daten Sync & Verwaltung</h3>
+                    <p class="text-slate-300 mb-4">Hier kannst du deine lokalen Daten sichern, wiederherstellen oder verwalten.</p>
+                    <div class="space-y-4">
+                        <button id="export-data-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">Daten exportieren (JSON)</button>
+                        <div>
+                            <label class="block text-slate-300 mb-2">Daten importieren (JSON)</label>
+                            <input type="file" id="import-file-input" accept=".json" class="w-full text-sm text-slate-500
+                                file:mr-4 file:py-2 file:px-4
+                                file:rounded-lg file:border-0
+                                file:text-sm file:font-semibold
+                                file:bg-slate-600 file:text-white
+                                hover:file:bg-slate-500
+                                file:transition-colors
+                                cursor-pointer"
+                            >
+                        </div>
+                        <button id="generate-dummy-data-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">Beispieldaten erstellen</button>
+                        <button id="clear-data-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Alle Daten löschen</button>
+                    </div>
+                    <button id="modal-close-btn" class="w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors mt-6">Schließen</button>
+                </div>
+            `;
+            modal.innerHTML = modalContent;
+            modal.classList.remove('hidden');
+
+            document.getElementById('export-data-btn').addEventListener('click', exportData);
+            document.getElementById('import-file-input').addEventListener('change', importData);
+            document.getElementById('generate-dummy-data-btn').addEventListener('click', () => {
+                generateDummyData();
+                modal.classList.add('hidden');
+            });
+            document.getElementById('clear-data-btn').addEventListener('click', () => {
                 showModal(
                     "Daten löschen",
-                    "Möchten Sie alle Daten unwiderruflich löschen?",
+                    "Möchten Sie wirklich alle Daten unwiderruflich löschen?",
                     () => {
                         localStorage.removeItem('sportEntries');
                         localStorage.removeItem('userDefinedSports');
-                        showModal("Daten gelöscht", "Alle Daten wurden erfolgreich gelöscht.");
-                        updateUI();
+                        localStorage.removeItem('userId');
+                        localStorage.removeItem('nickname');
+                        window.location.reload(); // App neu laden nach dem Löschen
                     }
                 );
+            });
+            document.getElementById('modal-close-btn').addEventListener('click', () => {
+                modal.classList.add('hidden');
+            });
+        }
+
+        function exportData() {
+            const data = {
+                sportEntries: loadData(),
+                userDefinedSports: loadSports(),
+                userId: localStorage.getItem('userId'),
+                nickname: localStorage.getItem('nickname')
             };
-            // document.body.appendChild(clearDataBtn);
-            
-            const generateDummyDataBtn = document.createElement('button');
-            generateDummyDataBtn.textContent = 'Beispieldaten erstellen';
-            generateDummyDataBtn.classList.add('fixed', 'bottom-4', 'right-56', 'bg-primary', 'text-white', 'py-2', 'px-4', 'rounded-full', 'shadow-lg', 'hover:bg-blue-600', 'transition-colors', 'z-40');
-            generateDummyDataBtn.onclick = generateDummyData;
-            // document.body.appendChild(generateDummyDataBtn);
-        });
+            const dataStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sport-challenge-data-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showModal("Export erfolgreich", "Deine Daten wurden als JSON-Datei heruntergeladen.");
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (importedData.sportEntries && importedData.userDefinedSports && importedData.userId && importedData.nickname) {
+                        showModal(
+                            "Daten importieren",
+                            "Möchten Sie die vorhandenen Daten wirklich durch die importierten Daten ersetzen?",
+                            () => {
+                                localStorage.setItem('sportEntries', JSON.stringify(importedData.sportEntries));
+                                localStorage.setItem('userDefinedSports', JSON.stringify(importedData.userDefinedSports));
+                                localStorage.setItem('userId', importedData.userId);
+                                localStorage.setItem('nickname', importedData.nickname);
+                                window.location.reload(); // App neu laden, um die neuen Daten zu verwenden
+                            }
+                        );
+                    } else {
+                        showModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.");
+                    }
+                } catch (error) {
+                    showModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.");
+                }
+            };
+            reader.readAsText(file);
+        }
 
         // Initialisierung der App
         function initializeApp() {
@@ -908,6 +989,14 @@
             }
         }
         
+        // Event-Listener für den Daten-Sync-Button in der Fußzeile hinzufügen
+        document.addEventListener('DOMContentLoaded', () => {
+            const dataSyncBtn = document.getElementById('data-sync-btn');
+            if (dataSyncBtn) {
+                dataSyncBtn.addEventListener('click', showDataSyncModal);
+            }
+        });
+        
         // App starten
         initializeApp();
 
@@ -916,7 +1005,7 @@
 <body class="p-4 sm:p-8">
 
     <!-- Hauptcontainer für die gesamte App -->
-    <div class="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-4xl mx-auto border border-slate-700">
+    <div class="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-4xl mx-auto border border-slate-700 flex-grow">
         <h1 class="text-3xl sm:text-4xl font-bold text-center text-primary mb-2">Sport Challenge 2025/26</h1>
         <p class="text-center text-slate-400 mb-6">Erreiche 8000 Minuten Sport in einem Jahr.</p>
 
@@ -934,5 +1023,12 @@
             <button id="modal-close-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">OK</button>
         </div>
     </div>
+
+    <!-- Footer Navigation -->
+    <footer class="mt-8">
+        <nav>
+            <button id="data-sync-btn" class="text-primary font-semibold py-2 px-4 rounded-lg hover:text-blue-400 transition-colors">Daten Sync</button>
+        </nav>
+    </footer>
 </body>
 </html>
