@@ -73,10 +73,7 @@
         // UI-Elemente
         const appContainer = document.getElementById('app-container');
         const modal = document.getElementById('message-modal');
-        const modalTitle = document.getElementById('modal-title');
-        const modalMessage = document.getElementById('modal-message');
-        const modalCloseBtn = document.getElementById('modal-close-btn');
-        const dataSyncBtn = document.getElementById('data-sync-btn');
+        const modalContentWrapper = document.getElementById('modal-content-wrapper');
         
         let userId;
         let currentUser;
@@ -85,23 +82,27 @@
         let allSports = { ...SPORT_WEIGHTS }; // Kombinierte Liste aus vordefinierten und benutzerdefinierten Sportarten
         let editingIndex = -1; // Index des Eintrags, der bearbeitet wird
 
-        // Funktion zum Anzeigen des modalen Dialogs
-        function showModal(title, message, callback = null) {
-            modalTitle.textContent = title;
-            modalMessage.textContent = message;
-            
-            const newModalCloseBtn = modalCloseBtn.cloneNode(true);
-            modalCloseBtn.parentNode.replaceChild(newModalCloseBtn, modalCloseBtn);
-            newModalCloseBtn.addEventListener('click', () => {
-                modal.classList.add('hidden');
-                if (callback) {
-                    callback();
-                }
-            });
-
+        // Funktion zum Anzeigen eines dynamischen Modals
+        function showDynamicModal(title, message, buttons) {
+            // Setzt den HTML-Inhalt des Modals und leert frühere Event-Listener
+            modalContentWrapper.innerHTML = `
+                <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
+                <p class="text-slate-300 mb-4">${message}</p>
+                <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
+            `;
             modal.classList.remove('hidden');
-        }
 
+            const buttonContainer = document.getElementById('modal-buttons');
+            buttons.forEach(btnConfig => {
+                const button = document.createElement('button');
+                button.id = btnConfig.id;
+                button.textContent = btnConfig.text;
+                button.className = btnConfig.class;
+                button.addEventListener('click', btnConfig.onClick);
+                buttonContainer.appendChild(button);
+            });
+        }
+        
         // Rendert das Anmeldeformular für den Spitznamen.
         function renderNicknameForm() {
             appContainer.innerHTML = `
@@ -127,7 +128,7 @@
                     renderApp();
                     updateUI();
                 } else {
-                    showModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.");
+                    showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 }
             });
         }
@@ -447,7 +448,7 @@
                 updateUI();
                 showSection('dashboard'); // Wechselt zum Dashboard nach dem Speichern
             } else {
-                showModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.");
+                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
             }
         }
         
@@ -468,11 +469,11 @@
                 
                 renderSportSelect();
                 renderSportWeightList();
-                showModal("Sportart hinzugefügt", `Die Sportart "${sportName}" wurde erfolgreich erstellt.`);
+                showDynamicModal("Sportart hinzugefügt", `Die Sportart "${sportName}" wurde erfolgreich erstellt.`, [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 newSportNameInput.value = '';
                 newSportWeightInput.value = '';
             } else {
-                showModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.");
+                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
             }
         }
         
@@ -480,17 +481,21 @@
         function handleDeleteClick(index) {
             const data = loadData();
             if (data[index].userId !== userId) {
-                showModal("Fehler", "Sie können nur Ihre eigenen Einträge löschen.");
+                showDynamicModal("Fehler", "Sie können nur Ihre eigenen Einträge löschen.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 return;
             }
-            showModal(
+            showDynamicModal(
                 "Eintrag löschen",
                 "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?",
-                () => {
-                    const updatedData = data.filter((_, i) => i !== parseInt(index));
-                    saveData(updatedData);
-                    updateUI();
-                }
+                [
+                    { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: () => {
+                        const updatedData = data.filter((_, i) => i !== parseInt(index));
+                        saveData(updatedData);
+                        updateUI();
+                        modal.classList.add('hidden');
+                    }},
+                    { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                ]
             );
         }
 
@@ -518,7 +523,7 @@
                 editingIndex = -1; // Bearbeitungsmodus beenden
                 updateUI();
             } else {
-                showModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.");
+                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
             }
         }
 
@@ -868,63 +873,157 @@
             ];
             
             saveData(dummyData);
-            showModal("Beispieldaten erstellt", "Daten für Max und Lisa wurden lokal erstellt.");
             updateUI();
         }
 
+        // Funktion zum Anzeigen des Daten-Sync-Modals
         function showDataSyncModal() {
-            // Speichere den aktuellen Inhalt des Modals, um ihn wiederherzustellen
-            const originalModalContent = modal.innerHTML;
-
+            modal.classList.remove('hidden');
             const modalContent = `
-                <div class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
+                <div class="p-6">
                     <h3 class="text-xl font-bold text-primary mb-4">Daten Sync & Verwaltung</h3>
-                    <p class="text-slate-300 mb-4">Hier kannst du deine lokalen Daten sichern, wiederherstellen oder verwalten.</p>
+                    <p id="sync-message" class="text-slate-300 mb-4">Hier kannst du deine lokalen Daten sichern, wiederherstellen oder verwalten.</p>
                     <div class="space-y-4">
                         <button id="export-data-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">Daten exportieren (JSON)</button>
                         <div>
                             <label class="block text-slate-300 mb-2">Daten importieren (JSON)</label>
-                            <input type="file" id="import-file-input" accept=".json" class="w-full text-sm text-slate-500
-                                file:mr-4 file:py-2 file:px-4
-                                file:rounded-lg file:border-0
-                                file:text-sm file:font-semibold
-                                file:bg-slate-600 file:text-white
-                                hover:file:bg-slate-500
-                                file:transition-colors
-                                cursor-pointer"
-                            >
+                            <div class="flex gap-2">
+                                <input type="file" id="import-file-input" accept=".json" class="w-full text-sm text-slate-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-lg file:border-0
+                                    file:text-sm file:font-semibold
+                                    file:bg-slate-600 file:text-white
+                                    hover:file:bg-slate-500
+                                    file:transition-colors
+                                    cursor-pointer"
+                                >
+                                <button id="import-data-btn" class="bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50" disabled>
+                                    Importieren
+                                </button>
+                            </div>
                         </div>
                         <button id="generate-dummy-data-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">Beispieldaten erstellen</button>
                         <button id="clear-data-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Alle Daten löschen</button>
                     </div>
-                    <button id="modal-close-btn" class="w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors mt-6">Schließen</button>
+                    <button id="modal-close-btn-sync" class="w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors mt-6">Schließen</button>
                 </div>
             `;
-            modal.innerHTML = modalContent;
-            modal.classList.remove('hidden');
+            modalContentWrapper.innerHTML = modalContent;
 
-            document.getElementById('export-data-btn').addEventListener('click', exportData);
-            document.getElementById('import-file-input').addEventListener('change', importData);
+            const importFileInput = document.getElementById('import-file-input');
+            const importDataBtn = document.getElementById('import-data-btn');
+            const syncModalCloseBtn = document.getElementById('modal-close-btn-sync');
+
+            // Button aktivieren, wenn eine Datei ausgewählt wird
+            importFileInput.addEventListener('change', () => {
+                importDataBtn.disabled = !importFileInput.files.length;
+            });
+
+            // Import-Funktion beim Klick auf den Button aufrufen
+            importDataBtn.addEventListener('click', () => {
+                const file = importFileInput.files[0];
+                if (file) {
+                    importFile(file);
+                }
+            });
+
+            document.getElementById('export-data-btn').addEventListener('click', () => {
+                exportData();
+                document.getElementById('sync-message').textContent = 'Deine Daten wurden als JSON-Datei heruntergeladen.';
+            });
             document.getElementById('generate-dummy-data-btn').addEventListener('click', () => {
                 generateDummyData();
-                modal.classList.add('hidden');
+                document.getElementById('sync-message').textContent = 'Beispieldaten wurden erfolgreich erstellt.';
+                updateUI();
             });
             document.getElementById('clear-data-btn').addEventListener('click', () => {
-                showModal(
+                showDynamicModal(
                     "Daten löschen",
                     "Möchten Sie wirklich alle Daten unwiderruflich löschen?",
-                    () => {
-                        localStorage.removeItem('sportEntries');
-                        localStorage.removeItem('userDefinedSports');
-                        localStorage.removeItem('userId');
-                        localStorage.removeItem('nickname');
-                        window.location.reload(); // App neu laden nach dem Löschen
-                    }
+                    [
+                        { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: () => {
+                            localStorage.removeItem('sportEntries');
+                            localStorage.removeItem('userDefinedSports');
+                            localStorage.removeItem('userId');
+                            localStorage.removeItem('nickname');
+                            window.location.reload();
+                        }},
+                        { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: showDataSyncModal }
+                    ]
                 );
             });
-            document.getElementById('modal-close-btn').addEventListener('click', () => {
+            syncModalCloseBtn.addEventListener('click', () => {
                 modal.classList.add('hidden');
             });
+        }
+
+        // Funktion zum Importieren der Datei
+        function importFile(file) {
+            if (!file) {
+                showDynamicModal("Fehler beim Import", "Keine Datei ausgewählt.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: showDataSyncModal }]);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (importedData.sportEntries && importedData.userDefinedSports) {
+                        showDynamicModal(
+                            "Daten importieren",
+                            "Möchten Sie die Daten aus der Datei zu Ihren bestehenden Daten hinzufügen?",
+                            [
+                                { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: () => {
+                                    const currentEntries = loadData();
+                                    const currentSports = loadSports();
+                                    let newEntriesAdded = 0;
+
+                                    importedData.sportEntries.forEach(importedEntry => {
+                                        // Prüfen, ob der Eintrag bereits existiert, um Duplikate zu vermeiden
+                                        const isDuplicate = currentEntries.some(existingEntry => 
+                                            existingEntry.userId === importedEntry.userId &&
+                                            existingEntry.nickname === importedEntry.nickname &&
+                                            existingEntry.sport === importedEntry.sport &&
+                                            existingEntry.minutes === importedEntry.minutes &&
+                                            existingEntry.timestamp === importedEntry.timestamp
+                                        );
+
+                                        if (!isDuplicate) {
+                                            currentEntries.push(importedEntry);
+                                            newEntriesAdded++;
+                                        }
+                                    });
+                                    
+                                    // Sportarten zusammenführen (neue überschreiben alte)
+                                    const mergedSports = { ...currentSports, ...importedData.userDefinedSports };
+
+                                    saveData(currentEntries);
+                                    saveSports(mergedSports);
+
+                                    // Optional: User-Daten aus dem Import übernehmen, wenn vorhanden
+                                    if (importedData.userId) {
+                                      localStorage.setItem('userId', importedData.userId);
+                                    }
+                                    if (importedData.nickname) {
+                                      localStorage.setItem('nickname', importedData.nickname);
+                                    }
+                                    
+                                    modal.classList.add('hidden');
+                                    updateUI();
+                                    showDataSyncModal();
+                                    document.getElementById('sync-message').textContent = `Import erfolgreich! ${newEntriesAdded} neue Einträge wurden hinzugefügt.`;
+                                }},
+                                { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: showDataSyncModal }
+                            ]
+                        );
+                    } else {
+                        showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: showDataSyncModal }]);
+                    }
+                } catch (error) {
+                    showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: showDataSyncModal }]);
+                }
+            };
+            reader.readAsText(file);
         }
 
         function exportData() {
@@ -944,37 +1043,6 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showModal("Export erfolgreich", "Deine Daten wurden als JSON-Datei heruntergeladen.");
-        }
-
-        function importData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const importedData = JSON.parse(e.target.result);
-                    if (importedData.sportEntries && importedData.userDefinedSports && importedData.userId && importedData.nickname) {
-                        showModal(
-                            "Daten importieren",
-                            "Möchten Sie die vorhandenen Daten wirklich durch die importierten Daten ersetzen?",
-                            () => {
-                                localStorage.setItem('sportEntries', JSON.stringify(importedData.sportEntries));
-                                localStorage.setItem('userDefinedSports', JSON.stringify(importedData.userDefinedSports));
-                                localStorage.setItem('userId', importedData.userId);
-                                localStorage.setItem('nickname', importedData.nickname);
-                                window.location.reload(); // App neu laden, um die neuen Daten zu verwenden
-                            }
-                        );
-                    } else {
-                        showModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.");
-                    }
-                } catch (error) {
-                    showModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.");
-                }
-            };
-            reader.readAsText(file);
         }
 
         // Initialisierung der App
@@ -1017,10 +1085,7 @@
 
     <!-- Modales Overlay für Warnungen/Meldungen -->
     <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-        <div class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
-            <h3 id="modal-title" class="text-xl font-bold text-primary mb-2"></h3>
-            <p id="modal-message" class="text-slate-300 mb-4"></p>
-            <button id="modal-close-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">OK</button>
+        <div id="modal-content-wrapper" class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
         </div>
     </div>
 
