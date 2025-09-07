@@ -1000,11 +1000,11 @@
                                     saveData(currentEntries);
                                     saveSports(mergedSports);
 
-                                    // Optional: User-Daten aus dem Import übernehmen, wenn vorhanden
-                                    if (importedData.userId) {
+                                    // Optional: User-Daten aus dem Import nur übernehmen, wenn noch keine Daten vorhanden sind
+                                    if (importedData.userId && !localStorage.getItem('userId')) {
                                       localStorage.setItem('userId', importedData.userId);
                                     }
-                                    if (importedData.nickname) {
+                                    if (importedData.nickname && !localStorage.getItem('nickname')) {
                                       localStorage.setItem('nickname', importedData.nickname);
                                     }
                                     
