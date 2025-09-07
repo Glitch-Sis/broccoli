@@ -326,7 +326,8 @@
                             b.classList.add('bg-slate-600', 'hover:bg-slate-500');
                         }
                     });
-                    renderWeeklyProgressGraph(loadData());
+                    const myEntries = loadData().filter(entry => entry.userId === userId);
+                    renderWeeklyProgressGraph(myEntries);
                 });
             });
 
