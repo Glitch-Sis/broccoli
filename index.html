@@ -77,6 +77,7 @@
         
         let userId;
         let currentUser;
+        let displayedUserId; // Die ID des Benutzers, dessen Fortschritt gerade angezeigt wird
         let myProgressView = 'minutes'; // State für die Anzeige: 'minutes' oder 'weighted'
         let chartTimeframe = 'week'; // State für das Diagramm: 'week', 'month', 'year'
         let allSports = { ...SPORT_WEIGHTS }; // Kombinierte Liste aus vordefinierten und benutzerdefinierten Sportarten
@@ -123,6 +124,7 @@
                 if (nickname) {
                     currentUser = nickname;
                     userId = `user-${Math.random().toString(36).substr(2, 9)}`; // Zufällige ID für lokale Speicherung
+                    displayedUserId = userId;
                     localStorage.setItem('userId', userId);
                     localStorage.setItem('nickname', nickname);
                     renderApp();
@@ -146,18 +148,18 @@
 
                     <!-- Abschnitt für das Dashboard -->
                     <div id="dashboard-section" class="space-y-6">
-                        <!-- Fortschritt der Teilnehmer Abschnitt -->
+                        <!-- Teilnehmer Abschnitt -->
                         <div class="card bg-slate-700 p-6 rounded-xl">
-                            <h2 class="text-2xl font-bold text-white mb-4">Fortschritt der Teilnehmer</h2>
+                            <h2 class="text-2xl font-bold text-white mb-4">Teilnehmer</h2>
                             <div id="leaderboard" class="space-y-4">
                                 <!-- Die Rangliste wird hier geladen -->
                             </div>
                         </div>
 
-                        <!-- Mein Fortschritt Abschnitt -->
+                        <!-- Fortschritt Abschnitt -->
                         <div class="card bg-slate-700 p-6 rounded-xl">
                             <div class="flex items-center justify-between mb-2">
-                                <h2 class="text-2xl font-bold text-white">Mein Fortschritt</h2>
+                                <h2 class="text-2xl font-bold text-white">Fortschritt</h2>
                             </div>
                             <div class="flex items-center justify-between mb-2 text-sm text-slate-300">
                                 <span id="my-progress-label">Gesammelte Minuten</span>
@@ -326,7 +328,7 @@
                             b.classList.add('bg-slate-600', 'hover:bg-slate-500');
                         }
                     });
-                    const myEntries = loadData().filter(entry => entry.userId === userId);
+                    const myEntries = loadData().filter(entry => entry.userId === displayedUserId);
                     renderWeeklyProgressGraph(myEntries);
                 });
             });
@@ -363,6 +365,17 @@
                         handleSaveEdit(index);
                     } else if (target.dataset.action === 'cancel') {
                         handleCancelEdit();
+                    }
+                });
+            }
+
+            // Event-Delegation für die Rangliste
+            const leaderboardEl = document.getElementById('leaderboard');
+            if (leaderboardEl) {
+                leaderboardEl.addEventListener('click', (e) => {
+                    const target = e.target.closest('[data-user-id]');
+                    if (target) {
+                        showUserProgress(target.dataset.userId);
                     }
                 });
             }
@@ -534,6 +547,11 @@
             updateUI();
         }
 
+        // Funktion zum Anzeigen des Fortschritts eines bestimmten Benutzers
+        function showUserProgress(selectedUserId) {
+            displayedUserId = selectedUserId;
+            updateUI();
+        }
 
         // Aktualisiert die gesamte Benutzeroberfläche.
         function updateUI() {
@@ -553,7 +571,7 @@
 
             if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !data) return;
 
-            const myEntries = data.filter(entry => entry.userId === userId);
+            const myEntries = data.filter(entry => entry.userId === displayedUserId);
             const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
             const totalWeightedMinutes = myEntries.reduce((sum, entry) => {
                 const weight = allSports[entry.sport] || 1.0;
@@ -738,16 +756,25 @@
             participantArray.sort((a, b) => b.weightedMinutes - a.weightedMinutes);
             const weightedLeader = participantArray[0] || { weightedMinutes: -1, userId: null };
 
+            // Hole den eingeloggten Benutzer und sortiere den Rest
+            const loggedInUser = participantArray.find(p => p.userId === userId);
+            const otherParticipants = participantArray.filter(p => p.userId !== userId);
+            otherParticipants.sort((a, b) => b.minutes - a.minutes); // Oder eine andere Sortierung
+
+            const sortedParticipants = loggedInUser ? [loggedInUser, ...otherParticipants] : otherParticipants;
+
             leaderboardEl.innerHTML = `
                 <div class="flex flex-col sm:flex-row gap-4">
-                    ${Object.values(participants).map(p => {
+                    ${sortedParticipants.map(p => {
                         const isMinutesLeader = p.userId === minutesLeader.userId;
                         const isWeightedLeader = p.userId === weightedLeader.userId;
+                        const isActiveUser = p.userId === displayedUserId;
                         
                         return `
-                            <div class="flex-1 p-6 rounded-xl border border-slate-600 bg-slate-800 text-center relative overflow-hidden">
+                            <div data-user-id="${p.userId}" class="flex-1 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
                                 <h3 class="text-xl font-bold mb-2 text-white">
                                     ${p.nickname}
+                                    ${p.userId === userId ? ' (Du)' : ''}
                                 </h3>
                                 <div class="space-y-2">
                                     <div class="p-3 rounded-lg bg-slate-700">
@@ -778,7 +805,7 @@
             const summaryEl = document.getElementById('sport-summary-list');
             if (!summaryEl || !data) return;
 
-            const myEntries = data.filter(entry => entry.userId === userId);
+            const myEntries = data.filter(entry => entry.userId === displayedUserId);
             const sportMinutes = {};
 
             myEntries.forEach(entry => {
@@ -1052,6 +1079,7 @@
             currentUser = localStorage.getItem('nickname');
 
             if (userId && currentUser) {
+                displayedUserId = userId; // Setze den angezeigten Benutzer auf den eingeloggten
                 renderApp();
             } else {
                 renderNicknameForm();
