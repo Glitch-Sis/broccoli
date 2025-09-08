@@ -6,6 +6,8 @@
     <title>Sport Challenge App</title>
     <!-- Tailwind CSS CDN für das Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- qrcode.js CDN für die QR-Code-Generierung -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <!-- Konfiguration für Tailwind CSS -->
     <script>
         tailwind.config = {
@@ -138,13 +140,82 @@
             URL.revokeObjectURL(url);
         }
 
+        /** Generiert einen QR-Code aus den lokalen Daten und zeigt ihn an. */
+        function showQRCode() {
+            const data = {
+                sportEntries: loadData(),
+                userDefinedSports: loadSports(),
+                userId: localStorage.getItem('userId'),
+                nickname: localStorage.getItem('nickname')
+            };
+            const dataStr = JSON.stringify(data);
+            
+            showDynamicModal("QR-Code Export", "", [
+                { id: 'modal-close-btn', text: 'Schließen', class: 'w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+            ]);
+            
+            // Finde den Wrapper und erstelle den QR-Code
+            const qrWrapper = document.getElementById('modal-content-wrapper');
+            const message = qrWrapper.querySelector('p');
+            message.textContent = 'Scanne den QR-Code mit einem anderen Gerät, um die Daten zu importieren.';
+            
+            const qrCodeEl = document.createElement('div');
+            qrCodeEl.id = 'qrcode-display';
+            qrCodeEl.classList.add('flex', 'justify-center', 'items-center', 'p-4', 'bg-white', 'rounded-lg', 'my-4');
+            message.parentNode.insertBefore(qrCodeEl, message.nextSibling);
+
+            new QRCode(qrCodeEl, {
+                text: dataStr,
+                width: 256,
+                height: 256,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        }
+
+        /**
+         * Verarbeitet den Import der Daten (unabhängig von der Quelle).
+         * @param {object} importedData - Das geparste Datenobjekt.
+         */
+        function processImportedData(importedData) {
+            const currentEntries = loadData();
+            const currentSports = loadSports();
+            let newEntriesAdded = 0;
+
+            importedData.sportEntries.forEach(importedEntry => {
+                const isDuplicate = currentEntries.some(existingEntry => 
+                    existingEntry.userId === importedEntry.userId &&
+                    existingEntry.nickname === importedEntry.nickname &&
+                    existingEntry.sport === importedEntry.sport &&
+                    existingEntry.minutes === importedEntry.minutes &&
+                    existingEntry.timestamp === importedEntry.timestamp
+                );
+                if (!isDuplicate) {
+                    currentEntries.push(importedEntry);
+                    newEntriesAdded++;
+                }
+            });
+            
+            const mergedSports = { ...currentSports, ...importedData.userDefinedSports };
+            saveData(currentEntries);
+            saveSports(mergedSports);
+
+            if (importedData.userId && !localStorage.getItem('userId')) localStorage.setItem('userId', importedData.userId);
+            if (importedData.nickname && !localStorage.getItem('nickname')) localStorage.setItem('nickname', importedData.nickname);
+            
+            modal.classList.add('hidden');
+            updateUI();
+            showDataSyncModal();
+            document.getElementById('sync-message').textContent = `Import erfolgreich! ${newEntriesAdded} neue Einträge wurden hinzugefügt.`;
+        }
+
         /** Importiert Daten aus einer JSON-Datei und führt sie mit bestehenden Daten zusammen. */
         function importFile(file) {
             if (!file) {
                 showDynamicModal("Fehler beim Import", "Keine Datei ausgewählt.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 return;
             }
-
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
@@ -155,35 +226,7 @@
                             "Möchten Sie die Daten aus der Datei zu Ihren bestehenden Daten hinzufügen?",
                             [
                                 { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: () => {
-                                    const currentEntries = loadData();
-                                    const currentSports = loadSports();
-                                    let newEntriesAdded = 0;
-
-                                    importedData.sportEntries.forEach(importedEntry => {
-                                        const isDuplicate = currentEntries.some(existingEntry => 
-                                            existingEntry.userId === importedEntry.userId &&
-                                            existingEntry.nickname === importedEntry.nickname &&
-                                            existingEntry.sport === importedEntry.sport &&
-                                            existingEntry.minutes === importedEntry.minutes &&
-                                            existingEntry.timestamp === importedEntry.timestamp
-                                        );
-                                        if (!isDuplicate) {
-                                            currentEntries.push(importedEntry);
-                                            newEntriesAdded++;
-                                        }
-                                    });
-                                    
-                                    const mergedSports = { ...currentSports, ...importedData.userDefinedSports };
-                                    saveData(currentEntries);
-                                    saveSports(mergedSports);
-
-                                    if (importedData.userId && !localStorage.getItem('userId')) localStorage.setItem('userId', importedData.userId);
-                                    if (importedData.nickname && !localStorage.getItem('nickname')) localStorage.setItem('nickname', importedData.nickname);
-                                    
-                                    modal.classList.add('hidden');
-                                    updateUI();
-                                    showDataSyncModal();
-                                    document.getElementById('sync-message').textContent = `Import erfolgreich! ${newEntriesAdded} neue Einträge wurden hinzugefügt.`;
+                                    processImportedData(importedData);
                                 }},
                                 { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
                             ]
@@ -196,6 +239,33 @@
                 }
             };
             reader.readAsText(file);
+        }
+
+        /** Importiert Daten aus einem Textfeld. */
+        function importFromText(jsonText) {
+            if (!jsonText) {
+                showDynamicModal("Fehler beim Import", "Textfeld ist leer.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                return;
+            }
+            try {
+                const importedData = JSON.parse(jsonText);
+                if (importedData.sportEntries && importedData.userDefinedSports) {
+                    showDynamicModal(
+                        "Daten importieren",
+                        "Möchten Sie die Daten aus dem Text zu Ihren bestehenden Daten hinzufügen?",
+                        [
+                            { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: () => {
+                                processImportedData(importedData);
+                            }},
+                            { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                        ]
+                    );
+                } else {
+                    showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte wähle eine gültige JSON-Datei oder füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            } catch (error) {
+                showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte wähle eine gültige JSON-Datei oder füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+            }
         }
         
         // =====================================
@@ -936,10 +1006,12 @@
                     <h3 class="text-xl font-bold text-primary mb-4">Daten Sync & Verwaltung</h3>
                     <p id="sync-message" class="text-slate-300 mb-4">Hier kannst du deine lokalen Daten sichern, wiederherstellen oder verwalten.</p>
                     <div class="space-y-4">
-                        <button id="export-data-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">Daten exportieren (JSON)</button>
-                        <div>
-                            <label class="block text-slate-300 mb-2">Daten importieren (JSON)</label>
-                            <div class="flex gap-2">
+                        <button id="export-file-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">Daten exportieren (als Datei)</button>
+                        <button id="export-qr-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">Daten exportieren (als QR-Code)</button>
+                        
+                        <div id="import-section">
+                            <label class="block text-slate-300 mb-2">Daten importieren</label>
+                            <div class="flex flex-col gap-2">
                                 <input type="file" id="import-file-input" accept=".json" class="w-full text-sm text-slate-500
                                     file:mr-4 file:py-2 file:px-4
                                     file:rounded-lg file:border-0
@@ -949,11 +1021,18 @@
                                     file:transition-colors
                                     cursor-pointer"
                                 >
-                                <button id="import-data-btn" class="bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50" disabled>
-                                    Importieren
+                                <button id="import-file-btn" class="bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50" disabled>
+                                    Importieren (aus Datei)
+                                </button>
+                            </div>
+                            <div class="mt-4">
+                                <textarea id="import-text-area" rows="4" class="w-full p-2 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Füge hier deinen JSON-Text ein oder scanne einen QR-Code"></textarea>
+                                <button id="import-text-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors mt-2 disabled:opacity-50" disabled>
+                                    Importieren (aus Text)
                                 </button>
                             </div>
                         </div>
+
                         <button id="generate-dummy-data-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">Beispieldaten erstellen</button>
                         <button id="clear-data-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Alle Daten löschen</button>
                     </div>
@@ -962,22 +1041,36 @@
             `;
             modalContentWrapper.innerHTML = modalContent;
 
+            const exportFileBtn = document.getElementById('export-file-btn');
+            const exportQrBtn = document.getElementById('export-qr-btn');
             const importFileInput = document.getElementById('import-file-input');
-            const importDataBtn = document.getElementById('import-data-btn');
-            
-            importFileInput.addEventListener('change', () => {
-                importDataBtn.disabled = !importFileInput.files.length;
-            });
+            const importFileBtn = document.getElementById('import-file-btn');
+            const importTextArea = document.getElementById('import-text-area');
+            const importTextBtn = document.getElementById('import-text-btn');
+            const syncModalCloseBtn = document.getElementById('modal-close-btn-sync');
 
-            importDataBtn.addEventListener('click', () => {
+            exportFileBtn.addEventListener('click', () => {
+                exportData();
+                document.getElementById('sync-message').textContent = 'Deine Daten wurden als JSON-Datei heruntergeladen.';
+            });
+            exportQrBtn.addEventListener('click', showQRCode);
+
+            importFileInput.addEventListener('change', () => {
+                importFileBtn.disabled = !importFileInput.files.length;
+            });
+            importFileBtn.addEventListener('click', () => {
                 const file = importFileInput.files[0];
                 if (file) importFile(file);
             });
 
-            document.getElementById('export-data-btn')?.addEventListener('click', () => {
-                exportData();
-                document.getElementById('sync-message').textContent = 'Deine Daten wurden als JSON-Datei heruntergeladen.';
+            importTextArea.addEventListener('input', () => {
+                importTextBtn.disabled = importTextArea.value.trim().length === 0;
             });
+            importTextBtn.addEventListener('click', () => {
+                const jsonText = importTextArea.value;
+                importFromText(jsonText);
+            });
+
             document.getElementById('generate-dummy-data-btn')?.addEventListener('click', () => {
                 generateDummyData();
                 document.getElementById('sync-message').textContent = 'Beispieldaten wurden erfolgreich erstellt.';
@@ -999,7 +1092,7 @@
                     ]
                 );
             });
-            document.getElementById('modal-close-btn-sync')?.addEventListener('click', () => modal.classList.add('hidden'));
+            syncModalCloseBtn.addEventListener('click', () => modal.classList.add('hidden'));
         }
         
         // =====================================
