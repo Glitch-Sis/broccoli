@@ -56,7 +56,9 @@
     </style>
 
     <script type="module">
-        // Globale Variablen
+        // =====================================
+        // Globale Variablen und UI-Elemente
+        // =====================================
         const SPORT_WEIGHTS = {
             'Laufen': 1.5,
             'Schwimmen': 1.8,
@@ -70,22 +72,143 @@
         };
         const GOAL_MINUTES = 8000;
         
-        // UI-Elemente
         const appContainer = document.getElementById('app-container');
         const modal = document.getElementById('message-modal');
         const modalContentWrapper = document.getElementById('modal-content-wrapper');
         
         let userId;
         let currentUser;
-        let displayedUserId; // Die ID des Benutzers, dessen Fortschritt gerade angezeigt wird
-        let myProgressView = 'minutes'; // State für die Anzeige: 'minutes' oder 'weighted'
-        let chartTimeframe = 'week'; // State für das Diagramm: 'week', 'month', 'year'
-        let allSports = { ...SPORT_WEIGHTS }; // Kombinierte Liste aus vordefinierten und benutzerdefinierten Sportarten
-        let editingIndex = -1; // Index des Eintrags, der bearbeitet wird
+        let displayedUserId;
+        let myProgressView = 'minutes';
+        let chartTimeframe = 'week';
+        let allSports = { ...SPORT_WEIGHTS };
+        let editingIndex = -1;
 
-        // Funktion zum Anzeigen eines dynamischen Modals
+        // =====================================
+        // Hilfsfunktionen für das Datenmanagement
+        // =====================================
+
+        /** Lädt die Sporteinträge aus dem Local Storage. */
+        function loadData() {
+            const data = localStorage.getItem('sportEntries');
+            return data ? JSON.parse(data) : [];
+        }
+
+        /** Speichert die Sporteinträge im Local Storage. */
+        function saveData(data) {
+            localStorage.setItem('sportEntries', JSON.stringify(data));
+        }
+
+        /** Lädt benutzerdefinierte Sportarten aus dem Local Storage. */
+        function loadSports() {
+            const sports = localStorage.getItem('userDefinedSports');
+            return sports ? JSON.parse(sports) : {};
+        }
+
+        /** Speichert benutzerdefinierte Sportarten im Local Storage. */
+        function saveSports(sports) {
+            localStorage.setItem('userDefinedSports', JSON.stringify(sports));
+        }
+
+        /** Lädt Daten und Sportarten aus dem Local Storage und aktualisiert die UI. */
+        function loadSportsAndData() {
+            allSports = { ...SPORT_WEIGHTS, ...loadSports() };
+            renderSportSelect();
+            renderSportWeightList();
+            updateUI();
+        }
+
+        /** Exportiert alle lokalen Daten als JSON-Datei. */
+        function exportData() {
+            const data = {
+                sportEntries: loadData(),
+                userDefinedSports: loadSports(),
+                userId: localStorage.getItem('userId'),
+                nickname: localStorage.getItem('nickname')
+            };
+            const dataStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sport-challenge-data-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        /** Importiert Daten aus einer JSON-Datei und führt sie mit bestehenden Daten zusammen. */
+        function importFile(file) {
+            if (!file) {
+                showDynamicModal("Fehler beim Import", "Keine Datei ausgewählt.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (importedData.sportEntries && importedData.userDefinedSports) {
+                        showDynamicModal(
+                            "Daten importieren",
+                            "Möchten Sie die Daten aus der Datei zu Ihren bestehenden Daten hinzufügen?",
+                            [
+                                { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: () => {
+                                    const currentEntries = loadData();
+                                    const currentSports = loadSports();
+                                    let newEntriesAdded = 0;
+
+                                    importedData.sportEntries.forEach(importedEntry => {
+                                        const isDuplicate = currentEntries.some(existingEntry => 
+                                            existingEntry.userId === importedEntry.userId &&
+                                            existingEntry.nickname === importedEntry.nickname &&
+                                            existingEntry.sport === importedEntry.sport &&
+                                            existingEntry.minutes === importedEntry.minutes &&
+                                            existingEntry.timestamp === importedEntry.timestamp
+                                        );
+                                        if (!isDuplicate) {
+                                            currentEntries.push(importedEntry);
+                                            newEntriesAdded++;
+                                        }
+                                    });
+                                    
+                                    const mergedSports = { ...currentSports, ...importedData.userDefinedSports };
+                                    saveData(currentEntries);
+                                    saveSports(mergedSports);
+
+                                    if (importedData.userId && !localStorage.getItem('userId')) localStorage.setItem('userId', importedData.userId);
+                                    if (importedData.nickname && !localStorage.getItem('nickname')) localStorage.setItem('nickname', importedData.nickname);
+                                    
+                                    modal.classList.add('hidden');
+                                    updateUI();
+                                    showDataSyncModal();
+                                    document.getElementById('sync-message').textContent = `Import erfolgreich! ${newEntriesAdded} neue Einträge wurden hinzugefügt.`;
+                                }},
+                                { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                            ]
+                        );
+                    } else {
+                        showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    }
+                } catch (error) {
+                    showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        // =====================================
+        // UI Rendering und Update Funktionen
+        // =====================================
+
+        /**
+         * Zeigt ein dynamisches modales Fenster mit anpassbarem Titel, Nachricht und Buttons an.
+         * @param {string} title - Der Titel des Modals.
+         * @param {string} message - Die Nachricht des Modals.
+         * @param {Array<Object>} buttons - Ein Array von Button-Konfigurationsobjekten.
+         */
         function showDynamicModal(title, message, buttons) {
-            // Setzt den HTML-Inhalt des Modals und leert frühere Event-Listener
             modalContentWrapper.innerHTML = `
                 <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
                 <p class="text-slate-300 mb-4">${message}</p>
@@ -104,7 +227,7 @@
             });
         }
         
-        // Rendert das Anmeldeformular für den Spitznamen.
+        /** Rendert das Anmeldeformular für den Spitznamen. */
         function renderNicknameForm() {
             appContainer.innerHTML = `
                 <div class="text-center p-6 bg-slate-700 rounded-xl">
@@ -123,7 +246,7 @@
                 const nickname = nicknameInput.value.trim();
                 if (nickname) {
                     currentUser = nickname;
-                    userId = `user-${Math.random().toString(36).substr(2, 9)}`; // Zufällige ID für lokale Speicherung
+                    userId = `user-${Math.random().toString(36).substr(2, 9)}`;
                     displayedUserId = userId;
                     localStorage.setItem('userId', userId);
                     localStorage.setItem('nickname', nickname);
@@ -135,7 +258,7 @@
             });
         }
 
-        // Rendert die Haupt-App.
+        /** Rendert die Haupt-App. */
         function renderApp() {
             appContainer.innerHTML = `
                 <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
@@ -145,7 +268,6 @@
                         <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sportart eintragen</button>
                         <button data-section="add-sport" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
                     </nav>
-
                     <!-- Abschnitt für das Dashboard -->
                     <div id="dashboard-section" class="space-y-6">
                         <!-- Teilnehmer Abschnitt -->
@@ -155,7 +277,6 @@
                                 <!-- Die Rangliste wird hier geladen -->
                             </div>
                         </div>
-
                         <!-- Fortschritt Abschnitt -->
                         <div class="card bg-slate-700 p-6 rounded-xl">
                             <div class="flex items-center justify-between mb-2">
@@ -187,7 +308,6 @@
                                 <canvas id="weekly-chart" class="w-full h-48"></canvas>
                             </div>
                         </div>
-
                         <!-- Minuten pro Sportart Auswertung -->
                         <div class="card bg-slate-700 p-6 rounded-xl">
                             <h2 class="text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
@@ -195,7 +315,6 @@
                                 <!-- Der Inhalt wird hier geladen -->
                             </div>
                         </div>
-
                         <!-- Letzte Aktivitäten Abschnitt -->
                         <div class="card bg-slate-700 p-6 rounded-xl">
                             <h2 class="text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
@@ -204,7 +323,6 @@
                             </div>
                         </div>
                     </div>
-
                     <!-- Abschnitt zum Eintragen von Sport -->
                     <div id="add-entry-section" class="hidden">
                         <div class="card bg-slate-700 p-6 rounded-xl">
@@ -236,7 +354,6 @@
                             </form>
                         </div>
                     </div>
-
                     <!-- Abschnitt zum Hinzufügen eigener Sportarten -->
                     <div id="add-sport-section" class="hidden">
                         <div class="card bg-slate-700 p-6 rounded-xl">
@@ -271,147 +388,29 @@
             showSection('dashboard');
         }
 
-        // Zeigt einen bestimmten Abschnitt an und verbirgt die anderen
+        /**
+         * Zeigt einen bestimmten Abschnitt an und verbirgt die anderen.
+         * @param {string} sectionId - Die ID des anzuzeigenden Abschnitts.
+         */
         function showSection(sectionId) {
             document.querySelectorAll('.nav-button').forEach(btn => {
-                if (btn.dataset.section === sectionId) {
-                    btn.classList.remove('bg-slate-600', 'hover:bg-slate-500');
-                    btn.classList.add('bg-primary', 'hover:bg-blue-700');
-                } else {
-                    btn.classList.remove('bg-primary', 'hover:bg-blue-700');
-                    btn.classList.add('bg-slate-600', 'hover:bg-slate-500');
-                }
+                const isSelected = btn.dataset.section === sectionId;
+                btn.classList.toggle('bg-primary', isSelected);
+                btn.classList.toggle('hover:bg-blue-700', isSelected);
+                btn.classList.toggle('bg-slate-600', !isSelected);
+                btn.classList.toggle('hover:bg-slate-500', !isSelected);
             });
 
-            document.getElementById('dashboard-section').classList.add('hidden');
-            document.getElementById('add-entry-section').classList.add('hidden');
-            document.getElementById('add-sport-section').classList.add('hidden');
-            
-            document.getElementById(`${sectionId}-section`).classList.remove('hidden');
+            document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
+            document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
+            document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
         }
         
-        // Fügt Event-Listener hinzu.
-        function setupEventListeners() {
-            const navButtons = document.querySelectorAll('.nav-button');
-            navButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    showSection(btn.dataset.section);
-                });
-            });
+        // =====================================
+        // UI Rendering und Update Funktionen
+        // =====================================
 
-            const addEntryForm = document.getElementById('add-entry-form');
-            if (addEntryForm) {
-                addEntryForm.addEventListener('submit', handleFormSubmit);
-            }
-            const addSportForm = document.getElementById('add-sport-form');
-            if (addSportForm) {
-                addSportForm.addEventListener('submit', handleAddSportFormSubmit);
-            }
-            const toggleBtn = document.getElementById('toggle-progress-btn');
-            if (toggleBtn) {
-                toggleBtn.addEventListener('click', () => {
-                    myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
-                    updateUI();
-                });
-            }
-
-            const timeframeBtns = document.querySelectorAll('.timeframe-btn');
-            timeframeBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    chartTimeframe = btn.dataset.timeframe;
-                    timeframeBtns.forEach(b => {
-                        if (b.dataset.timeframe === chartTimeframe) {
-                            b.classList.remove('bg-slate-600', 'hover:bg-slate-500');
-                            b.classList.add('bg-primary', 'hover:bg-blue-700');
-                        } else {
-                            b.classList.remove('bg-primary', 'hover:bg-blue-700');
-                            b.classList.add('bg-slate-600', 'hover:bg-slate-500');
-                        }
-                    });
-                    const myEntries = loadData().filter(entry => entry.userId === displayedUserId);
-                    renderWeeklyProgressGraph(myEntries);
-                });
-            });
-
-            let currentMinutes = 0;
-            const minutesDisplay = document.getElementById('minutes-display');
-            const minutesBtns = document.querySelectorAll('.minutes-btn');
-            const clearMinutesBtn = document.getElementById('clear-minutes-btn');
-
-            minutesBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    currentMinutes += parseInt(btn.dataset.minutes, 10);
-                    minutesDisplay.textContent = currentMinutes;
-                });
-            });
-
-            clearMinutesBtn.addEventListener('click', () => {
-                currentMinutes = 0;
-                minutesDisplay.textContent = currentMinutes;
-            });
-
-            // Event-Delegation für die Liste der letzten Aktivitäten
-            const recentActivitiesEl = document.getElementById('recent-activities');
-            if (recentActivitiesEl) {
-                recentActivitiesEl.addEventListener('click', (e) => {
-                    const target = e.target;
-                    const index = parseInt(target.closest('[data-index]').dataset.index);
-
-                    if (target.dataset.action === 'delete') {
-                        handleDeleteClick(index);
-                    } else if (target.dataset.action === 'edit') {
-                        handleEditClick(index);
-                    } else if (target.dataset.action === 'save') {
-                        handleSaveEdit(index);
-                    } else if (target.dataset.action === 'cancel') {
-                        handleCancelEdit();
-                    }
-                });
-            }
-
-            // Event-Delegation für die Rangliste
-            const leaderboardEl = document.getElementById('leaderboard');
-            if (leaderboardEl) {
-                leaderboardEl.addEventListener('click', (e) => {
-                    const target = e.target.closest('[data-user-id]');
-                    if (target) {
-                        showUserProgress(target.dataset.userId);
-                    }
-                });
-            }
-        }
-        
-        // Lokale Daten laden
-        function loadData() {
-            const data = localStorage.getItem('sportEntries');
-            return data ? JSON.parse(data) : [];
-        }
-
-        // Lokale Daten speichern
-        function saveData(data) {
-            localStorage.setItem('sportEntries', JSON.stringify(data));
-        }
-
-        // Benutzerdefinierte Sportarten laden
-        function loadSports() {
-            const sports = localStorage.getItem('userDefinedSports');
-            return sports ? JSON.parse(sports) : {};
-        }
-
-        // Benutzerdefinierte Sportarten speichern
-        function saveSports(sports) {
-            localStorage.setItem('userDefinedSports', JSON.stringify(sports));
-        }
-
-        // Läd Daten und Sportarten aus dem Local Storage und aktualisiert die UI
-        function loadSportsAndData() {
-            allSports = { ...SPORT_WEIGHTS, ...loadSports() };
-            renderSportSelect();
-            renderSportWeightList();
-            updateUI();
-        }
-
-        // Rendert die Sportarten-Dropdown-Liste neu
+        /** Rendert die Sportarten-Dropdown-Liste neu */
         function renderSportSelect() {
             const sportSelect = document.getElementById('sport-select');
             if (sportSelect) {
@@ -420,8 +419,8 @@
                 ).join('');
             }
         }
-
-        // Rendert die Liste der Sportarten und ihrer Gewichtungen.
+        
+        /** Rendert die Liste der Sportarten und ihrer Gewichtungen. */
         function renderSportWeightList() {
             const sportWeightListEl = document.getElementById('sport-weight-list');
             if (!sportWeightListEl) return;
@@ -434,126 +433,13 @@
             `).join('');
         }
 
-        // Verarbeitet die Formularübermittlung.
-        function handleFormSubmit(e) {
-            e.preventDefault();
-            const sportSelect = document.getElementById('sport-select');
-            const dateInput = document.getElementById('date-input');
-            const minutesDisplay = document.getElementById('minutes-display');
-
-            const sport = sportSelect.value;
-            const date = dateInput.value;
-            const minutes = parseInt(minutesDisplay.textContent, 10);
-
-            if (minutes > 0 && date && userId && currentUser) {
-                const newEntry = {
-                    userId: userId,
-                    nickname: currentUser,
-                    sport: sport,
-                    minutes: minutes,
-                    timestamp: new Date(date).toISOString()
-                };
-                
-                const data = loadData();
-                data.push(newEntry);
-                saveData(data);
-                
-                minutesDisplay.textContent = '0'; // Eingabefeld leeren
-                updateUI();
-                showSection('dashboard'); // Wechselt zum Dashboard nach dem Speichern
-            } else {
-                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-        
-        // Verarbeitet das Hinzufügen einer neuen Sportart
-        function handleAddSportFormSubmit(e) {
-            e.preventDefault();
-            const newSportNameInput = document.getElementById('new-sport-name');
-            const newSportWeightInput = document.getElementById('new-sport-weight');
-
-            const sportName = newSportNameInput.value.trim();
-            const sportWeight = parseFloat(newSportWeightInput.value);
-
-            if (sportName && !isNaN(sportWeight) && sportWeight > 0) {
-                const userSports = loadSports();
-                userSports[sportName] = sportWeight;
-                saveSports(userSports);
-                allSports = { ...SPORT_WEIGHTS, ...userSports };
-                
-                renderSportSelect();
-                renderSportWeightList();
-                showDynamicModal("Sportart hinzugefügt", `Die Sportart "${sportName}" wurde erfolgreich erstellt.`, [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                newSportNameInput.value = '';
-                newSportWeightInput.value = '';
-            } else {
-                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-        
-        // Funktion zum Löschen eines Eintrags
-        function handleDeleteClick(index) {
-            const data = loadData();
-            if (data[index].userId !== userId) {
-                showDynamicModal("Fehler", "Sie können nur Ihre eigenen Einträge löschen.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                return;
-            }
-            showDynamicModal(
-                "Eintrag löschen",
-                "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?",
-                [
-                    { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: () => {
-                        const updatedData = data.filter((_, i) => i !== parseInt(index));
-                        saveData(updatedData);
-                        updateUI();
-                        modal.classList.add('hidden');
-                    }},
-                    { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
-                ]
-            );
-        }
-
-        // Funktion zum Bearbeiten eines Eintrags
-        function handleEditClick(index) {
-            editingIndex = index;
-            updateUI();
-        }
-
-        // Funktion zum Speichern des bearbeiteten Eintrags
-        function handleSaveEdit(index) {
-            const data = loadData();
-            const entryToEdit = data[index];
-            
-            const editedSport = document.getElementById('edit-sport-select').value;
-            const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
-            const editedDate = document.getElementById('edit-date-input').value;
-
-            if (editedMinutes > 0 && editedDate) {
-                entryToEdit.sport = editedSport;
-                entryToEdit.minutes = editedMinutes;
-                entryToEdit.timestamp = new Date(editedDate).toISOString();
-                
-                saveData(data);
-                editingIndex = -1; // Bearbeitungsmodus beenden
-                updateUI();
-            } else {
-                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-
-        // Funktion zum Abbrechen der Bearbeitung
-        function handleCancelEdit() {
-            editingIndex = -1; // Bearbeitungsmodus beenden
-            updateUI();
-        }
-
-        // Funktion zum Anzeigen des Fortschritts eines bestimmten Benutzers
+        /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
         function showUserProgress(selectedUserId) {
             displayedUserId = selectedUserId;
             updateUI();
         }
 
-        // Aktualisiert die gesamte Benutzeroberfläche.
+        /** Aktualisiert die gesamte Benutzeroberfläche. */
         function updateUI() {
             const data = loadData();
             renderMyProgress(data);
@@ -562,7 +448,6 @@
             renderRecentActivities(data);
         }
 
-        // Rendert den Fortschritt des aktuellen Benutzers.
         function renderMyProgress(data) {
             const myProgressLabelEl = document.getElementById('my-progress-label');
             const myProgressValueEl = document.getElementById('my-progress-value');
@@ -578,21 +463,12 @@
                 return sum + (entry.minutes * weight);
             }, 0);
 
-            let displayValue = 0;
-            let progress = 0;
-
-            if (myProgressView === 'minutes') {
-                myProgressLabelEl.textContent = 'Gesammelte Minuten';
-                displayValue = totalMinutes;
-                progress = Math.min(100, (totalMinutes / GOAL_MINUTES) * 100);
-            } else {
-                myProgressLabelEl.textContent = 'Gewichtete Minuten';
-                displayValue = totalWeightedMinutes;
-                progress = Math.min(100, (totalWeightedMinutes / GOAL_MINUTES) * 100);
-            }
-
+            let displayValue = (myProgressView === 'minutes') ? totalMinutes : totalWeightedMinutes;
+            let progress = (displayValue / GOAL_MINUTES) * 100;
+            
+            myProgressLabelEl.textContent = (myProgressView === 'minutes') ? 'Gesammelte Minuten' : 'Gewichtete Minuten';
             myProgressValueEl.textContent = displayValue.toFixed(myProgressView === 'weighted' ? 1 : 0);
-            progressBarEl.style.width = `${progress}%`;
+            progressBarEl.style.width = `${Math.min(100, progress)}%`;
             progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}%`;
 
             if (progress >= 100) {
@@ -607,7 +483,6 @@
             renderWeeklyProgressGraph(myEntries);
         }
         
-        // Rendert den Fortschrittsgrafen
         function renderWeeklyProgressGraph(myEntries) {
             const canvas = document.getElementById('weekly-chart');
             if (!canvas || !myEntries) return;
@@ -622,7 +497,6 @@
             let dataPoints = [];
             let labels = [];
 
-            // Daten basierend auf dem ausgewählten Zeitrahmen aggregieren
             const now = new Date();
             if (chartTimeframe === 'week') {
                 const dailyMinutes = new Array(7).fill(0);
@@ -631,9 +505,7 @@
                     .forEach(entry => {
                         const entryDate = new Date(entry.timestamp);
                         const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-                        if (diffDays >= 0 && diffDays < 7) {
-                            dailyMinutes[6 - diffDays] += entry.minutes;
-                        }
+                        if (diffDays >= 0 && diffDays < 7) dailyMinutes[6 - diffDays] += entry.minutes;
                     });
                 dataPoints = dailyMinutes;
                 for (let i = 6; i >= 0; i--) {
@@ -649,9 +521,7 @@
                         const entryDate = new Date(entry.timestamp);
                         const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
                         const weekIndex = Math.floor(diffDays / 7);
-                        if (weekIndex >= 0 && weekIndex < 4) {
-                            weeklyMinutes[3 - weekIndex] += entry.minutes;
-                        }
+                        if (weekIndex >= 0 && weekIndex < 4) weeklyMinutes[3 - weekIndex] += entry.minutes;
                     });
                 dataPoints = weeklyMinutes;
                 labels = ['Woche 1', 'Woche 2', 'Woche 3', 'Woche 4'];
@@ -662,9 +532,7 @@
                     .forEach(entry => {
                         const entryDate = new Date(entry.timestamp);
                         const diffMonths = (now.getFullYear() - entryDate.getFullYear()) * 12 + (now.getMonth() - entryDate.getMonth());
-                        if (diffMonths >= 0 && diffMonths < 12) {
-                            monthlyMinutes[11 - diffMonths] += entry.minutes;
-                        }
+                        if (diffMonths >= 0 && diffMonths < 12) monthlyMinutes[11 - diffMonths] += entry.minutes;
                     });
                 dataPoints = monthlyMinutes;
                 for (let i = 11; i >= 0; i--) {
@@ -679,23 +547,19 @@
             const chartWidth = canvas.width - 2 * padding;
             const pointSpacing = chartWidth / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
 
-            // Linien zeichnen
             ctx.beginPath();
             ctx.strokeStyle = '#22c55e';
             ctx.lineWidth = 3;
-            const firstPointX = padding;
-            const firstPointY = padding + chartHeight - (dataPoints.length > 0 ? (dataPoints[0] / maxMinutes) * chartHeight : 0);
-            ctx.moveTo(firstPointX, firstPointY);
             const points = dataPoints.map((value, index) => ({
                 x: padding + index * pointSpacing,
                 y: padding + chartHeight - (value / maxMinutes) * chartHeight
             }));
             if (points.length > 0) {
+                ctx.moveTo(points[0].x, points[0].y);
                 points.forEach(point => ctx.lineTo(point.x, point.y));
             }
             ctx.stroke();
             
-            // Y-Achsen Labels
             ctx.textAlign = 'right';
             ctx.fillStyle = '#94a3b8';
             ctx.font = '10px Inter';
@@ -705,7 +569,6 @@
                 ctx.fillText(label, padding - 5, y + 4);
             });
             
-            // Punkte zeichnen
             points.forEach(point => {
                 ctx.beginPath();
                 ctx.fillStyle = '#22c55e';
@@ -713,7 +576,6 @@
                 ctx.fill();
             });
 
-            // Labels und Werte zeichnen
             ctx.fillStyle = '#f3f4f6';
             ctx.font = '12px Inter';
             ctx.textAlign = 'center';
@@ -726,7 +588,6 @@
             });
         }
 
-        // Rendert die Rangliste.
         function renderLeaderboard(data) {
             const leaderboardEl = document.getElementById('leaderboard');
             if (!leaderboardEl || !data) return;
@@ -747,21 +608,15 @@
                 participants[userKey].weightedMinutes += entry.minutes * weight;
             });
 
-            const participantArray = Object.values(participants);
+            let participantArray = Object.values(participants);
 
-            // Sortiere das Array, um den Gewinner zu finden
             participantArray.sort((a, b) => b.minutes - a.minutes);
             const minutesLeader = participantArray[0] || { minutes: -1, userId: null };
-
             participantArray.sort((a, b) => b.weightedMinutes - a.weightedMinutes);
             const weightedLeader = participantArray[0] || { weightedMinutes: -1, userId: null };
 
-            // Hole den eingeloggten Benutzer und sortiere den Rest
             const loggedInUser = participantArray.find(p => p.userId === userId);
-            const otherParticipants = participantArray.filter(p => p.userId !== userId);
-            otherParticipants.sort((a, b) => b.minutes - a.minutes); // Oder eine andere Sortierung
-
-            const sortedParticipants = loggedInUser ? [loggedInUser, ...otherParticipants] : otherParticipants;
+            let sortedParticipants = loggedInUser ? [loggedInUser, ...participantArray.filter(p => p.userId !== userId)] : participantArray;
 
             leaderboardEl.innerHTML = `
                 <div class="flex flex-col sm:flex-row gap-4">
@@ -800,22 +655,17 @@
             `;
         }
 
-        // Rendert die Minuten pro Sportart Auswertung
         function renderSportSummary(data) {
             const summaryEl = document.getElementById('sport-summary-list');
             if (!summaryEl || !data) return;
 
             const myEntries = data.filter(entry => entry.userId === displayedUserId);
             const sportMinutes = {};
-
             myEntries.forEach(entry => {
                 const sportName = entry.sport;
-                if (!sportMinutes[sportName]) {
-                    sportMinutes[sportName] = 0;
-                }
+                if (!sportMinutes[sportName]) sportMinutes[sportName] = 0;
                 sportMinutes[sportName] += entry.minutes;
             });
-
             const sortedSports = Object.keys(sportMinutes).sort((a, b) => sportMinutes[b] - sportMinutes[a]);
 
             summaryEl.innerHTML = sortedSports.map(sport => `
@@ -826,12 +676,10 @@
             `).join('');
         }
         
-        // Rendert die Liste der letzten Aktivitäten
         function renderRecentActivities(data) {
             const recentActivitiesEl = document.getElementById('recent-activities');
             if (!recentActivitiesEl || !data) return;
 
-            // Filtere die Aktivitäten nach dem aktuell angezeigten Benutzer
             const displayedActivities = data.filter(entry => entry.userId === displayedUserId);
             const sortedActivities = displayedActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
@@ -839,11 +687,9 @@
                 const date = new Date(activity.timestamp);
                 const dateString = date.toLocaleDateString('de-DE');
                 const timeString = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                
                 const isMyEntry = activity.userId === userId;
 
                 if (isMyEntry && index === editingIndex) {
-                    // Render edit mode
                     return `
                         <div class="flex flex-col p-4 bg-slate-800 rounded-lg border border-primary" data-index="${index}">
                             <div class="flex justify-between items-center mb-2">
@@ -865,14 +711,12 @@
                         </div>
                     `;
                 } else {
-                    // Render view mode
                     const actionButtons = isMyEntry ? `
                         <div class="flex space-x-2">
                             <button data-action="edit" data-index="${index}" class="text-xs text-slate-400 hover:text-white transition-colors">Bearbeiten</button>
                             <button data-action="delete" data-index="${index}" class="text-xs text-secondary hover:text-red-400 transition-colors">Löschen</button>
                         </div>
                     ` : '';
-
                     return `
                         <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600" data-index="${index}">
                             <div>
@@ -888,8 +732,186 @@
                 }
             }).join('');
         }
+        
+        // =====================================
+        // Event-Listener Setup
+        // =====================================
+        
+        function setupEventListeners() {
+            document.querySelectorAll('.nav-button').forEach(btn => {
+                btn.addEventListener('click', () => showSection(btn.dataset.section));
+            });
 
-        // Funktion zum Generieren von Dummy-Daten in Local Storage
+            document.getElementById('add-entry-form')?.addEventListener('submit', handleFormSubmit);
+            document.getElementById('add-sport-form')?.addEventListener('submit', handleAddSportFormSubmit);
+            document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
+                myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
+                updateUI();
+            });
+
+            document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    chartTimeframe = btn.dataset.timeframe;
+                    document.querySelectorAll('.timeframe-btn').forEach(b => {
+                        const isSelected = b.dataset.timeframe === chartTimeframe;
+                        b.classList.toggle('bg-primary', isSelected);
+                        b.classList.toggle('hover:bg-blue-700', isSelected);
+                        b.classList.toggle('bg-slate-600', !isSelected);
+                        b.classList.toggle('hover:bg-slate-500', !isSelected);
+                    });
+                    renderWeeklyProgressGraph(loadData().filter(entry => entry.userId === displayedUserId));
+                });
+            });
+
+            // Event-Delegation für Minuten-Buttons
+            document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
+                const target = e.target;
+                const minutesDisplay = document.getElementById('minutes-display');
+                if (target.classList.contains('minutes-btn')) {
+                    let currentMinutes = parseInt(minutesDisplay.textContent, 10);
+                    currentMinutes += parseInt(target.dataset.minutes, 10);
+                    minutesDisplay.textContent = currentMinutes;
+                } else if (target.id === 'clear-minutes-btn') {
+                    minutesDisplay.textContent = '0';
+                }
+            });
+
+            // Event-Delegation für die Liste der letzten Aktivitäten
+            document.getElementById('recent-activities')?.addEventListener('click', (e) => {
+                const target = e.target;
+                const entryElement = target.closest('[data-index]');
+                if (!entryElement) return;
+
+                const index = parseInt(entryElement.dataset.index);
+
+                if (target.dataset.action === 'delete') handleDeleteClick(index);
+                else if (target.dataset.action === 'edit') handleEditClick(index);
+                else if (target.dataset.action === 'save') handleSaveEdit(index);
+                else if (target.dataset.action === 'cancel') handleCancelEdit();
+            });
+
+            // Event-Delegation für die Rangliste
+            document.getElementById('leaderboard')?.addEventListener('click', (e) => {
+                const target = e.target.closest('[data-user-id]');
+                if (target) showUserProgress(target.dataset.userId);
+            });
+
+            // Event-Listener für den Daten-Sync-Button in der Fußzeile
+            document.getElementById('data-sync-btn')?.addEventListener('click', showDataSyncModal);
+        }
+        
+        // =====================================
+        // Formular-Handling
+        // =====================================
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            const sportSelect = document.getElementById('sport-select');
+            const dateInput = document.getElementById('date-input');
+            const minutesDisplay = document.getElementById('minutes-display');
+            const sport = sportSelect.value;
+            const date = dateInput.value;
+            const minutes = parseInt(minutesDisplay.textContent, 10);
+
+            if (minutes > 0 && date && userId && currentUser) {
+                const newEntry = {
+                    userId: userId,
+                    nickname: currentUser,
+                    sport: sport,
+                    minutes: minutes,
+                    timestamp: new Date(date).toISOString()
+                };
+                
+                const data = loadData();
+                data.push(newEntry);
+                saveData(data);
+                
+                minutesDisplay.textContent = '0';
+                updateUI();
+                showSection('dashboard');
+            } else {
+                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+            }
+        }
+        
+        function handleAddSportFormSubmit(e) {
+            e.preventDefault();
+            const newSportNameInput = document.getElementById('new-sport-name');
+            const newSportWeightInput = document.getElementById('new-sport-weight');
+            const sportName = newSportNameInput.value.trim();
+            const sportWeight = parseFloat(newSportWeightInput.value);
+
+            if (sportName && !isNaN(sportWeight) && sportWeight > 0) {
+                const userSports = loadSports();
+                userSports[sportName] = sportWeight;
+                saveSports(userSports);
+                allSports = { ...SPORT_WEIGHTS, ...userSports };
+                
+                renderSportSelect();
+                renderSportWeightList();
+                showDynamicModal("Sportart hinzugefügt", `Die Sportart "${sportName}" wurde erfolgreich erstellt.`, [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                newSportNameInput.value = '';
+                newSportWeightInput.value = '';
+            } else {
+                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+            }
+        }
+        
+        // --- CRUD-Funktionen für Einträge ---
+        function handleDeleteClick(index) {
+            const data = loadData();
+            if (data[index].userId !== userId) {
+                showDynamicModal("Fehler", "Sie können nur Ihre eigenen Einträge löschen.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                return;
+            }
+            showDynamicModal(
+                "Eintrag löschen",
+                "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?",
+                [
+                    { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: () => {
+                        const updatedData = data.filter((_, i) => i !== parseInt(index));
+                        saveData(updatedData);
+                        updateUI();
+                        modal.classList.add('hidden');
+                    }},
+                    { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                ]
+            );
+        }
+
+        function handleEditClick(index) {
+            editingIndex = index;
+            updateUI();
+        }
+
+        function handleSaveEdit(index) {
+            const data = loadData();
+            const entryToEdit = data[index];
+            const editedSport = document.getElementById('edit-sport-select').value;
+            const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
+            const editedDate = document.getElementById('edit-date-input').value;
+
+            if (editedMinutes > 0 && editedDate) {
+                entryToEdit.sport = editedSport;
+                entryToEdit.minutes = editedMinutes;
+                entryToEdit.timestamp = new Date(editedDate).toISOString();
+                
+                saveData(data);
+                editingIndex = -1;
+                updateUI();
+            } else {
+                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+            }
+        }
+
+        function handleCancelEdit() {
+            editingIndex = -1;
+            updateUI();
+        }
+
+        // =====================================
+        // Daten-Sync-Funktionen
+        // =====================================
+        /** Generiert Beispieldaten für Max und Lisa im Local Storage. */
         function generateDummyData() {
             const now = new Date();
             const dummyData = [
@@ -906,7 +928,7 @@
             updateUI();
         }
 
-        // Funktion zum Anzeigen des Daten-Sync-Modals
+        /** Zeigt das Modal-Fenster für Daten-Sync an. */
         function showDataSyncModal() {
             modal.classList.remove('hidden');
             const modalContent = `
@@ -942,31 +964,26 @@
 
             const importFileInput = document.getElementById('import-file-input');
             const importDataBtn = document.getElementById('import-data-btn');
-            const syncModalCloseBtn = document.getElementById('modal-close-btn-sync');
-
-            // Button aktivieren, wenn eine Datei ausgewählt wird
+            
             importFileInput.addEventListener('change', () => {
                 importDataBtn.disabled = !importFileInput.files.length;
             });
 
-            // Import-Funktion beim Klick auf den Button aufrufen
             importDataBtn.addEventListener('click', () => {
                 const file = importFileInput.files[0];
-                if (file) {
-                    importFile(file);
-                }
+                if (file) importFile(file);
             });
 
-            document.getElementById('export-data-btn').addEventListener('click', () => {
+            document.getElementById('export-data-btn')?.addEventListener('click', () => {
                 exportData();
                 document.getElementById('sync-message').textContent = 'Deine Daten wurden als JSON-Datei heruntergeladen.';
             });
-            document.getElementById('generate-dummy-data-btn').addEventListener('click', () => {
+            document.getElementById('generate-dummy-data-btn')?.addEventListener('click', () => {
                 generateDummyData();
                 document.getElementById('sync-message').textContent = 'Beispieldaten wurden erfolgreich erstellt.';
                 updateUI();
             });
-            document.getElementById('clear-data-btn').addEventListener('click', () => {
+            document.getElementById('clear-data-btn')?.addEventListener('click', () => {
                 showDynamicModal(
                     "Daten löschen",
                     "Möchten Sie wirklich alle Daten unwiderruflich löschen?",
@@ -978,131 +995,33 @@
                             localStorage.removeItem('nickname');
                             window.location.reload();
                         }},
-                        { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: showDataSyncModal }
+                        { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
                     ]
                 );
             });
-            syncModalCloseBtn.addEventListener('click', () => {
-                modal.classList.add('hidden');
-            });
+            document.getElementById('modal-close-btn-sync')?.addEventListener('click', () => modal.classList.add('hidden'));
         }
-
-        // Funktion zum Importieren der Datei
-        function importFile(file) {
-            if (!file) {
-                showDynamicModal("Fehler beim Import", "Keine Datei ausgewählt.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: showDataSyncModal }]);
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const importedData = JSON.parse(e.target.result);
-                    if (importedData.sportEntries && importedData.userDefinedSports) {
-                        showDynamicModal(
-                            "Daten importieren",
-                            "Möchten Sie die Daten aus der Datei zu Ihren bestehenden Daten hinzufügen?",
-                            [
-                                { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: () => {
-                                    const currentEntries = loadData();
-                                    const currentSports = loadSports();
-                                    let newEntriesAdded = 0;
-
-                                    importedData.sportEntries.forEach(importedEntry => {
-                                        // Prüfen, ob der Eintrag bereits existiert, um Duplikate zu vermeiden
-                                        const isDuplicate = currentEntries.some(existingEntry => 
-                                            existingEntry.userId === importedEntry.userId &&
-                                            existingEntry.nickname === importedEntry.nickname &&
-                                            existingEntry.sport === importedEntry.sport &&
-                                            existingEntry.minutes === importedEntry.minutes &&
-                                            existingEntry.timestamp === importedEntry.timestamp
-                                        );
-
-                                        if (!isDuplicate) {
-                                            currentEntries.push(importedEntry);
-                                            newEntriesAdded++;
-                                        }
-                                    });
-                                    
-                                    // Sportarten zusammenführen (neue überschreiben alte)
-                                    const mergedSports = { ...currentSports, ...importedData.userDefinedSports };
-
-                                    saveData(currentEntries);
-                                    saveSports(mergedSports);
-
-                                    // Optional: User-Daten aus dem Import nur übernehmen, wenn noch keine Daten vorhanden sind
-                                    if (importedData.userId && !localStorage.getItem('userId')) {
-                                      localStorage.setItem('userId', importedData.userId);
-                                    }
-                                    if (importedData.nickname && !localStorage.getItem('nickname')) {
-                                      localStorage.setItem('nickname', importedData.nickname);
-                                    }
-                                    
-                                    modal.classList.add('hidden');
-                                    updateUI();
-                                    showDataSyncModal();
-                                    document.getElementById('sync-message').textContent = `Import erfolgreich! ${newEntriesAdded} neue Einträge wurden hinzugefügt.`;
-                                }},
-                                { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: showDataSyncModal }
-                            ]
-                        );
-                    } else {
-                        showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: showDataSyncModal }]);
-                    }
-                } catch (error) {
-                    showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: showDataSyncModal }]);
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        function exportData() {
-            const data = {
-                sportEntries: loadData(),
-                userDefinedSports: loadSports(),
-                userId: localStorage.getItem('userId'),
-                nickname: localStorage.getItem('nickname')
-            };
-            const dataStr = JSON.stringify(data, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `sport-challenge-data-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-
-        // Initialisierung der App
+        
+        // =====================================
+        // App-Initialisierung
+        // =====================================
+        /** Initialisiert die App, basierend auf dem Anmeldestatus des Benutzers. */
         function initializeApp() {
             userId = localStorage.getItem('userId');
             currentUser = localStorage.getItem('nickname');
 
             if (userId && currentUser) {
-                displayedUserId = userId; // Setze den angezeigten Benutzer auf den eingeloggten
+                displayedUserId = userId;
                 renderApp();
             } else {
                 renderNicknameForm();
             }
         }
         
-        // Event-Listener für den Daten-Sync-Button in der Fußzeile hinzufügen
-        document.addEventListener('DOMContentLoaded', () => {
-            const dataSyncBtn = document.getElementById('data-sync-btn');
-            if (dataSyncBtn) {
-                dataSyncBtn.addEventListener('click', showDataSyncModal);
-            }
-        });
-        
-        // App starten
-        initializeApp();
-
+        document.addEventListener('DOMContentLoaded', initializeApp);
     </script>
 </head>
 <body class="p-4 sm:p-8">
-
     <!-- Hauptcontainer für die gesamte App -->
     <div class="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-4xl mx-auto border border-slate-700 flex-grow">
         <h1 class="text-3xl sm:text-4xl font-bold text-center text-primary mb-2">Sport Challenge 2025/26</h1>
