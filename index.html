@@ -831,7 +831,9 @@
             const recentActivitiesEl = document.getElementById('recent-activities');
             if (!recentActivitiesEl || !data) return;
 
-            const sortedActivities = data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            // Filtere die Aktivitäten nach dem aktuell angezeigten Benutzer
+            const displayedActivities = data.filter(entry => entry.userId === displayedUserId);
+            const sortedActivities = displayedActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             recentActivitiesEl.innerHTML = sortedActivities.map((activity, index) => {
                 const date = new Date(activity.timestamp);
