@@ -6,8 +6,6 @@
     <title>Sport Challenge App</title>
     <!-- Tailwind CSS CDN für das Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- qrcode.js CDN für die QR-Code-Generierung -->
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <!-- Konfiguration für Tailwind CSS -->
     <script>
         tailwind.config = {
@@ -140,40 +138,6 @@
             URL.revokeObjectURL(url);
         }
 
-        /** Generiert einen QR-Code aus den lokalen Daten und zeigt ihn an. */
-        function showQRCode() {
-            const data = {
-                sportEntries: loadData(),
-                userDefinedSports: loadSports(),
-                userId: localStorage.getItem('userId'),
-                nickname: localStorage.getItem('nickname')
-            };
-            const dataStr = JSON.stringify(data);
-            
-            showDynamicModal("QR-Code Export", "", [
-                { id: 'modal-close-btn', text: 'Schließen', class: 'w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
-            ]);
-            
-            // Finde den Wrapper und erstelle den QR-Code
-            const qrWrapper = document.getElementById('modal-content-wrapper');
-            const message = qrWrapper.querySelector('p');
-            message.textContent = 'Scanne den QR-Code mit einem anderen Gerät, um die Daten zu importieren.';
-            
-            const qrCodeEl = document.createElement('div');
-            qrCodeEl.id = 'qrcode-display';
-            qrCodeEl.classList.add('flex', 'justify-center', 'items-center', 'p-4', 'bg-white', 'rounded-lg', 'my-4');
-            message.parentNode.insertBefore(qrCodeEl, message.nextSibling);
-
-            new QRCode(qrCodeEl, {
-                text: dataStr,
-                width: 256,
-                height: 256,
-                colorDark : "#000000",
-                colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.H
-            });
-        }
-
         /**
          * Verarbeitet den Import der Daten (unabhängig von der Quelle).
          * @param {object} importedData - Das geparste Datenobjekt.
@@ -261,10 +225,10 @@
                         ]
                     );
                 } else {
-                    showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte wähle eine gültige JSON-Datei oder füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 }
             } catch (error) {
-                showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte wähle eine gültige JSON-Datei oder füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
             }
         }
         
@@ -1007,7 +971,6 @@
                     <p id="sync-message" class="text-slate-300 mb-4">Hier kannst du deine lokalen Daten sichern, wiederherstellen oder verwalten.</p>
                     <div class="space-y-4">
                         <button id="export-file-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">Daten exportieren (als Datei)</button>
-                        <button id="export-qr-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">Daten exportieren (als QR-Code)</button>
                         
                         <div id="import-section">
                             <label class="block text-slate-300 mb-2">Daten importieren</label>
@@ -1026,7 +989,7 @@
                                 </button>
                             </div>
                             <div class="mt-4">
-                                <textarea id="import-text-area" rows="4" class="w-full p-2 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Füge hier deinen JSON-Text ein oder scanne einen QR-Code"></textarea>
+                                <textarea id="import-text-area" rows="4" class="w-full p-2 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Füge hier deinen JSON-Text ein"></textarea>
                                 <button id="import-text-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors mt-2 disabled:opacity-50" disabled>
                                     Importieren (aus Text)
                                 </button>
@@ -1042,7 +1005,6 @@
             modalContentWrapper.innerHTML = modalContent;
 
             const exportFileBtn = document.getElementById('export-file-btn');
-            const exportQrBtn = document.getElementById('export-qr-btn');
             const importFileInput = document.getElementById('import-file-input');
             const importFileBtn = document.getElementById('import-file-btn');
             const importTextArea = document.getElementById('import-text-area');
@@ -1053,7 +1015,6 @@
                 exportData();
                 document.getElementById('sync-message').textContent = 'Deine Daten wurden als JSON-Datei heruntergeladen.';
             });
-            exportQrBtn.addEventListener('click', showQRCode);
 
             importFileInput.addEventListener('change', () => {
                 importFileBtn.disabled = !importFileInput.files.length;
