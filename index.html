@@ -139,6 +139,39 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
+        
+        /** Teilt die lokalen Daten als JSON-Datei über die native Web Share API. */
+        async function shareData() {
+            const data = {
+                sportEntries: loadData(),
+                userDefinedSports: loadSports(),
+                userId: localStorage.getItem('userId'),
+                nickname: localStorage.getItem('nickname')
+            };
+            
+            const dataStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const file = new File([blob], `sport-challenge-data-${new Date().toISOString().split('T')[0]}.json`, { type: 'application/json' });
+
+            // Überprüfe, ob die Web Share API verfügbar ist
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        title: 'Meine Sport Challenge Daten',
+                        text: 'Hier sind meine Sportdaten aus der Sport Challenge App.',
+                        files: [file]
+                    });
+                } catch (error) {
+                    console.error('Fehler beim Teilen:', error);
+                    // Zeige ein Fehlermodal an
+                    showDynamicModal("Teilen fehlgeschlagen", "Ein Fehler ist beim Teilen aufgetreten. Bitte versuche es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            } else {
+                // Fallback: Wenn Teilen nicht möglich ist, nutze den normalen Download
+                exportData();
+                showDynamicModal("Teilen nicht möglich", "Die Teilen-Funktion wird von deinem Browser nicht unterstützt. Deine Daten wurden stattdessen heruntergeladen.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+            }
+        }
 
         /**
          * Verarbeitet den Import der Daten (unabhängig von der Quelle).
@@ -988,14 +1021,33 @@
 
         /** Zeigt das Modal-Fenster für Daten-Sync an. */
         function showDataSyncModal() {
+            const isShareAvailable = navigator.canShare && navigator.canShare({ files: [new File([], 'test.json', { type: 'application/json' })] });
+
             modal.classList.remove('hidden');
             const modalContent = `
                 <div class="p-6">
                     <h3 class="text-xl font-bold text-primary mb-4">Daten Sync & Verwaltung</h3>
                     <p id="sync-message" class="text-slate-300 mb-4">Hier kannst du deine lokalen Daten sichern, wiederherstellen oder verwalten.</p>
                     <div class="space-y-4">
-                        <button id="export-file-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">Daten exportieren (als Datei)</button>
-                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <button id="export-file-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">
+                                <span class="flex items-center justify-center space-x-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+                                        <path fill-rule="evenodd" d="M12 2.25a.75.75 0 01.75.75v11.69l3.44-3.44a.75.75 0 111.06 1.06l-4.75 4.75a.75.75 0 01-1.06 0l-4.75-4.75a.75.75 0 011.06-1.06l3.44 3.44V3a.75.75 0 01.75-.75zM17.25 18a.75.75 0 010 1.5H6.75a.75.75 0 010-1.5h10.5z" clip-rule="evenodd" />
+                                    </svg>
+                                    <span>Exportieren</span>
+                                </span>
+                            </button>
+                            <button id="share-data-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors ${!isShareAvailable ? 'hidden' : ''}">
+                                <span class="flex items-center justify-center space-x-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+                                        <path fill-rule="evenodd" d="M15.75 4.5a3 3 0 11.825 2.572 2.542 2.542 0 01-.825 3.016V12a.75.75 0 001.5 0v-1.912a4.05 4.05 0 001.89-1.396A3 3 0 1115.75 4.5zM18 18a3 3 0 11-5.69 1.341c-.675-.152-1.385-.295-2.1-.42V4.5a3 3 0 11.825-2.288 4.05 4.05 0 00-1.89 1.396V12a.75.75 0 001.5 0v-.855c.715.125 1.425.268 2.1.42A3 3 0 1118 18zM3.75 6.75a3 3 0 116 0 3 3 0 01-6 0z" clip-rule="evenodd" />
+                                    </svg>
+                                    <span>Teilen</span>
+                                </span>
+                            </button>
+                        </div>
+
                         <div id="import-section">
                             <label class="block text-slate-300 mb-2">Daten importieren</label>
                             <div class="flex flex-col gap-2">
@@ -1029,6 +1081,7 @@
             modalContentWrapper.innerHTML = modalContent;
 
             const exportFileBtn = document.getElementById('export-file-btn');
+            const shareDataBtn = document.getElementById('share-data-btn');
             const importFileInput = document.getElementById('import-file-input');
             const importFileBtn = document.getElementById('import-file-btn');
             const importTextArea = document.getElementById('import-text-area');
@@ -1038,6 +1091,10 @@
             exportFileBtn.addEventListener('click', () => {
                 exportData();
                 document.getElementById('sync-message').textContent = 'Deine Daten wurden als JSON-Datei heruntergeladen.';
+            });
+            
+            shareDataBtn.addEventListener('click', () => {
+                shareData();
             });
 
             importFileInput.addEventListener('change', () => {
