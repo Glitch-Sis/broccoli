@@ -91,6 +91,9 @@
         let editingDocId = null;
         let isAppReady = false;
         let isMigrating = false;
+        let unsubscribeEntries = () => {};
+        let unsubscribeSports = () => {};
+        let unsubscribeLeaderboard = () => {};
 
         // =====================================
         // Firebase Konfiguration und Initialisierung
@@ -312,8 +315,7 @@
                     currentUser = nickname;
                     // Korrigierter Pfad für das Leaderboard, um den Sicherheitsregeln zu entsprechen
                     await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { nickname: currentUser }, { merge: true });
-                    updateUI();
-                    renderApp();
+                    initializeListeners(true);
                 } else {
                     showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 }
@@ -789,7 +791,7 @@
             document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
                 myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
                 // Trigger re-render of my progress view
-                const myEntriesRef = getSportEntries(userId, renderMyProgress);
+                // Die onSnapshot-Callbacks werden die UI aktualisieren
             });
 
             document.querySelectorAll('.timeframe-btn').forEach(btn => {
@@ -802,7 +804,7 @@
                         b.classList.toggle('bg-slate-600', !isSelected);
                         b.classList.toggle('hover:bg-slate-500', !isSelected);
                     });
-                    const myEntriesRef = getSportEntries(displayedUserId, renderMyProgress);
+                    // Die onSnapshot-Callbacks werden die UI aktualisieren
                 });
             });
 
@@ -867,13 +869,6 @@
                 };
                 
                 await addSportEntry(newEntry);
-
-                // Manuelles Auslösen der UI-Updates, um eine sofortige Anzeige zu gewährleisten
-                const myEntries = (await getDocs(query(collection(db, `/artifacts/${appId}/users/${userId}/sportEntries`)))).docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
-                renderMyProgress(myEntries);
-                renderSportSummary(myEntries);
-                renderRecentActivities(myEntries);
                 
                 minutesInput.value = '0';
                 showSection('dashboard');
@@ -958,6 +953,35 @@
         // =====================================
         // App-Initialisierung
         // =====================================
+        async function initializeListeners(forceRender = false) {
+            if (forceRender) {
+                 isAppReady = false;
+            }
+            
+            unsubscribeLeaderboard();
+            unsubscribeSports();
+            unsubscribeEntries();
+
+            unsubscribeLeaderboard = getLeaderboard((participants) => {
+                renderLeaderboard(participants);
+                leaderboardLoaded = true;
+                checkAppReady();
+            });
+            unsubscribeSports = getUserDefinedSports(userId, (sports) => {
+                allSports = sports;
+                renderSportSelect();
+                renderSportWeightList();
+                sportsLoaded = true;
+                checkAppReady();
+            });
+            unsubscribeEntries = getSportEntries(userId, (myEntries) => {
+                renderMyProgress(myEntries);
+                renderSportSummary(myEntries);
+                renderRecentActivities(myEntries);
+                entriesLoaded = true;
+                checkAppReady();
+            });
+        }
 
         let leaderboardLoaded = false;
         let sportsLoaded = false;
@@ -983,11 +1007,7 @@
             if (!localStorageUserId || !sportEntriesStr) {
                 console.warn("Lokalstorage-Daten fehlen. Migration wird übersprungen.");
                 isMigrating = false;
-                // UI muss den Ladezustand verlassen
-                leaderboardLoaded = true;
-                sportsLoaded = true;
-                entriesLoaded = true;
-                checkAppReady();
+                initializeListeners();
                 return;
             }
 
@@ -1037,7 +1057,7 @@
             }
             finally {
                 isMigrating = false;
-                checkAppReady();
+                initializeListeners();
             }
         }
 
@@ -1053,12 +1073,6 @@
                     return;
                 }
                 
-                // Setze isAppReady auf false, um das Neuladen der App zu erzwingen,
-                // falls die Migration abgeschlossen ist.
-                if (isAppReady && !isMigrating) {
-                    isAppReady = false;
-                }
-
                 if (!isMigrating) {
                     const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
                     try {
@@ -1066,26 +1080,7 @@
                         
                         if (userDoc.exists()) {
                             currentUser = userDoc.data().nickname;
-
-                            getLeaderboard((participants) => {
-                                renderLeaderboard(participants);
-                                leaderboardLoaded = true;
-                                checkAppReady();
-                            });
-                            getUserDefinedSports(userId, (sports) => {
-                                allSports = sports;
-                                renderSportSelect();
-                                renderSportWeightList();
-                                sportsLoaded = true;
-                                checkAppReady();
-                            });
-                            getSportEntries(userId, (myEntries) => {
-                                renderMyProgress(myEntries);
-                                renderSportSummary(myEntries);
-                                renderRecentActivities(myEntries);
-                                entriesLoaded = true;
-                                checkAppReady();
-                            });
+                            initializeListeners();
                         } else {
                             renderNicknameForm();
                         }
