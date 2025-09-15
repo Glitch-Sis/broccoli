@@ -616,15 +616,14 @@
             }
 
             /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
-            function showUserProgress(selectedUserId) {
-                // Das Dashboard zeigt nur die eigenen Daten des Benutzers an.
-                if (selectedUserId !== userId) {
-                    const selectedUser = leaderboardParticipants.find(p => p.id === selectedUserId);
-                    if (selectedUser) {
-                        showToast(`Das Dashboard zeigt nur deine eigenen Daten. Klicke auf dein eigenes Profil, um es zu sehen.`, 'info');
-                    }
-                    return;
-                }
+            async function showUserProgress(selectedUserId) {
+                if (selectedUserId === displayedUserId) return;
+                
+                showToast(`Lade Daten für ${leaderboardParticipants.find(p => p.id === selectedUserId)?.nickname || 'den Benutzer'}`, 'info');
+                
+                entries = await getSportEntries(selectedUserId);
+                allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(selectedUserId)) };
+
                 displayedUserId = selectedUserId;
                 renderDashboard();
             }
