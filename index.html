@@ -1139,48 +1139,55 @@
             }
         }
 
-        // Haupt-Logik für Authentifizierung und App-Start
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                userId = user.uid;
-                displayedUserId = userId;
+        // =====================================
+        // Initialisierungs-Ablauf
+        // =====================================
+        if (!firebaseConfig.projectId) {
+            // Wenn die Konfiguration fehlt, zeige das Konfigurations-Modal an
+            showConfigModal();
+        } else {
+            // Wenn die Konfiguration vorhanden ist, fahre mit der Authentifizierung fort
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    displayedUserId = userId;
 
-                const hasLocalData = localStorage.getItem('userId') && localStorage.getItem('sportEntries');
-                if (hasLocalData && !isMigrating) {
-                    await migrateDataFromLocalStorage(userId);
-                    return;
-                }
-                
-                if (!isMigrating) {
-                    const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
+                    const hasLocalData = localStorage.getItem('userId') && localStorage.getItem('sportEntries');
+                    if (hasLocalData && !isMigrating) {
+                        await migrateDataFromLocalStorage(userId);
+                        return;
+                    }
+                    
+                    if (!isMigrating) {
+                        const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
+                        try {
+                            const userDoc = await getDoc(userDocRef);
+                            
+                            if (userDoc.exists()) {
+                                currentUser = userDoc.data().nickname;
+                                initializeListeners();
+                            } else {
+                                renderNicknameForm();
+                            }
+                        } catch (error) {
+                            console.error("Fehler beim Laden der Benutzerdaten:", error);
+                            showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                        }
+                    }
+                } else {
                     try {
-                        const userDoc = await getDoc(userDocRef);
-                        
-                        if (userDoc.exists()) {
-                            currentUser = userDoc.data().nickname;
-                            initializeListeners();
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
                         } else {
-                            renderNicknameForm();
+                            await signInAnonymously(auth);
                         }
                     } catch (error) {
-                        console.error("Fehler beim Laden der Benutzerdaten:", error);
-                        showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                        console.error('Authentifizierungsfehler:', error);
+                        showDynamicModal("Authentifizierungsfehler", "Konnte mich nicht anmelden. Bitte überprüfen Sie Ihre Internetverbindung.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                     }
                 }
-            } else {
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch (error) {
-                    console.error('Authentifizierungsfehler:', error);
-                    showDynamicModal("Authentifizierungsfehler", "Konnte mich nicht anmelden. Bitte überprüfen Sie Ihre Internetverbindung.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            }
-        });
-
+            });
+        }
     </script>
 </head>
 <body class="p-4 sm:p-8">
