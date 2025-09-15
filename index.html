@@ -617,6 +617,14 @@
 
             /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
             function showUserProgress(selectedUserId) {
+                // Das Dashboard zeigt nur die eigenen Daten des Benutzers an.
+                if (selectedUserId !== userId) {
+                    const selectedUser = leaderboardParticipants.find(p => p.id === selectedUserId);
+                    if (selectedUser) {
+                        showToast(`Das Dashboard zeigt nur deine eigenen Daten. Klicke auf dein eigenes Profil, um es zu sehen.`, 'info');
+                    }
+                    return;
+                }
                 displayedUserId = selectedUserId;
                 renderDashboard();
             }
