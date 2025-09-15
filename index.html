@@ -90,6 +90,7 @@
         let allSports = { ...SPORT_WEIGHTS };
         let editingDocId = null;
         let isAppReady = false;
+        let isMigrating = false;
 
         // =====================================
         // Firebase Konfiguration und Initialisierung
@@ -958,13 +959,18 @@
         // App-Initialisierung
         // =====================================
 
-        // Zustandsvariablen, um den Ladefortschritt zu verfolgen
         let leaderboardLoaded = false;
         let sportsLoaded = false;
         let entriesLoaded = false;
-        let isMigrating = false;
+        
+        function checkAppReady() {
+            if (leaderboardLoaded && sportsLoaded && entriesLoaded && !isAppReady) {
+                isAppReady = true;
+                renderApp();
+            }
+        }
 
-        async function migrateDataFromLocalStorage(uid) {
+        async function migrateDataFromLocalStorage(firebaseUid) {
             isMigrating = true;
             appContainer.innerHTML = `<p class="text-center text-slate-400">Migriere lokale Daten...</p>`;
             
@@ -974,18 +980,18 @@
             const userDefinedSportsStr = localStorage.getItem('userDefinedSports');
 
             try {
-                // 1. Benutzer im Leaderboard erstellen/aktualisieren mit dem Spitznamen aus LocalStorage
-                await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, uid), { nickname: localStorageNickname }, { merge: true });
+                // 1. Benutzer im Leaderboard erstellen/aktualisieren
+                await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
 
                 // 2. Sporteinträge migrieren
                 if (sportEntriesStr) {
                     const entries = JSON.parse(sportEntriesStr);
-                    const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
+                    const privateEntriesPath = `/artifacts/${appId}/users/${firebaseUid}/sportEntries`;
                     for (const entry of entries) {
-                        // Passe das Datenformat an Firestore an (z.B. Date-Objekt)
                         const firestoreEntry = {
                             ...entry,
-                            userId: uid, // Stelle sicher, dass der richtige uid verwendet wird
+                            userId: firebaseUid,
+                            nickname: localStorageNickname,
                             timestamp: new Date(entry.timestamp)
                         };
                         await addDoc(collection(db, privateEntriesPath), firestoreEntry);
@@ -995,7 +1001,7 @@
                 // 3. Benutzerdefinierte Sportarten migrieren
                 if (userDefinedSportsStr) {
                     const sports = JSON.parse(userDefinedSportsStr);
-                    const privateSportsPath = `/artifacts/${appId}/users/${uid}/userDefinedSports/sportsDoc`;
+                    const privateSportsPath = `/artifacts/${appId}/users/${firebaseUid}/userDefinedSports/sportsDoc`;
                     await setDoc(doc(db, privateSportsPath), { sports });
                 }
 
@@ -1011,36 +1017,26 @@
             } catch (error) {
                 console.error("Fehler bei der Migration:", error);
                 showDynamicModal("Migrationsfehler", "Ein Fehler ist bei der Datenmigration aufgetreten. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                isMigrating = false; // Fehler, setze Flag zurück
+                isMigrating = false;
             }
         }
 
-        function checkAppReady() {
-            if (leaderboardLoaded && sportsLoaded && entriesLoaded && !isAppReady) {
-                isAppReady = true;
-                renderApp();
-            }
-        }
-        
         // Haupt-Logik für Authentifizierung und App-Start
         onAuthStateChanged(auth, async (user) => {
-            if (isMigrating) return; // Wenn Migration läuft, nichts tun
+            if (isMigrating) return;
 
             if (user) {
                 userId = user.uid;
-                displayedUserId = userId;
 
-                // Migration von LocalStorage-Daten
+                // Migration von LocalStorage-Daten prüfen
                 const localStorageUserId = localStorage.getItem('userId');
                 const hasLocalData = localStorageUserId && localStorage.getItem('sportEntries');
+                
                 if (hasLocalData) {
                     await migrateDataFromLocalStorage(userId);
-                    // Nach erfolgreicher Migration, die Seite neu laden, um die neuen Daten zu verwenden
-                    window.location.reload();
-                    return; // Beende, da die Seite neu geladen wird
                 }
 
-                // Ab hier Standard-Login-Prozess
+                // Standard-Login-Prozess
                 const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
                 try {
                     const userDoc = await getDoc(userDocRef);
@@ -1068,7 +1064,6 @@
                             checkAppReady();
                         });
                     } else {
-                        // Benutzer existiert noch nicht im Leaderboard, zeige Formular an
                         renderNicknameForm();
                     }
                 } catch (error) {
@@ -1076,7 +1071,6 @@
                     showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 }
             } else {
-                // Benutzer ist abgemeldet, versuche anonyme Anmeldung
                 try {
                     if (initialAuthToken) {
                         await signInWithCustomToken(auth, initialAuthToken);
