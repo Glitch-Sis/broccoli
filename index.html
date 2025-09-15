@@ -95,6 +95,10 @@
         let unsubscribeSports = () => {};
         let unsubscribeLeaderboard = () => {};
 
+        // Speichert die aktuell geladenen Daten
+        let entries = [];
+        let leaderboardParticipants = [];
+
         // =====================================
         // Firebase Konfiguration und Initialisierung
         // =====================================
@@ -448,6 +452,8 @@
             dateInput.value = today;
 
             setupEventListeners();
+            // Ruft die Render-Funktion für das Dashboard auf, um es mit den aktuellen Daten zu füllen
+            renderDashboard();
         }
 
         /**
@@ -466,6 +472,20 @@
             document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
             document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
             document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
+
+            // Ruft die Dashboard-Render-Funktion auf, wenn der Benutzer zurück zum Dashboard navigiert
+            if (sectionId === 'dashboard') {
+                renderDashboard();
+            }
+        }
+
+        /** Rendert das Dashboard mit den aktuellen Daten */
+        function renderDashboard() {
+            renderMyProgress(entries.filter(entry => entry.userId === displayedUserId));
+            renderSportSummary(entries.filter(entry => entry.userId === displayedUserId));
+            renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
+            renderLeaderboard(leaderboardParticipants);
+            renderSportSelect();
         }
         
         // =====================================
@@ -791,7 +811,7 @@
             document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
                 myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
                 // Trigger re-render of my progress view
-                // Die onSnapshot-Callbacks werden die UI aktualisieren
+                renderDashboard();
             });
 
             document.querySelectorAll('.timeframe-btn').forEach(btn => {
@@ -805,6 +825,7 @@
                         b.classList.toggle('hover:bg-slate-500', !isSelected);
                     });
                     // Die onSnapshot-Callbacks werden die UI aktualisieren
+                    renderDashboard();
                 });
             });
 
@@ -895,8 +916,9 @@
                 newSportWeightInput.value = '';
                 
                 // Manuelles Update, um die Anzeige zu aktualisieren 
-                updateUI();
-
+                renderSportSelect();
+                renderSportWeightList();
+                renderDashboard();
             } else {
                 showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
             }
@@ -919,9 +941,7 @@
 
         function handleEditClick(docId) {
             editingDocId = docId;
-            const myEntriesRef = getSportEntries(userId, (myEntries) => {
-                renderRecentActivities(myEntries);
-            });
+            renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
         }
 
         async function handleSaveEdit(docId) {
@@ -939,7 +959,7 @@
                 await updateSportEntry(docId, newEntry);
                 
                 editingDocId = null;
-                // Entferne redundanten Aufruf, da onSnapshot die Aktualisierung vornimmt
+                renderDashboard();
             } else {
                 showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
             }
@@ -947,7 +967,7 @@
 
         function handleCancelEdit() {
             editingDocId = null;
-            // Entferne redundanten Aufruf, da onSnapshot die Aktualisierung vornimmt
+            renderDashboard();
         }
 
         // =====================================
@@ -963,9 +983,10 @@
             unsubscribeEntries();
 
             unsubscribeLeaderboard = getLeaderboard((participants) => {
-                renderLeaderboard(participants);
+                leaderboardParticipants = participants;
                 leaderboardLoaded = true;
                 checkAppReady();
+                renderDashboard();
             });
             unsubscribeSports = getUserDefinedSports(userId, (sports) => {
                 allSports = sports;
@@ -975,11 +996,10 @@
                 checkAppReady();
             });
             unsubscribeEntries = getSportEntries(userId, (myEntries) => {
-                renderMyProgress(myEntries);
-                renderSportSummary(myEntries);
-                renderRecentActivities(myEntries);
+                entries = myEntries;
                 entriesLoaded = true;
                 checkAppReady();
+                renderDashboard();
             });
         }
 
