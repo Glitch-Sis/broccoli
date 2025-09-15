@@ -110,9 +110,44 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : '';
         
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        const app = firebaseConfig.projectId ? initializeApp(firebaseConfig) : null;
+        const auth = app ? getAuth(app) : null;
+        const db = app ? getFirestore(app) : null;
+
+        /** Zeigt das Modal zur Eingabe der Firebase-Konfiguration an */
+        function showConfigModal() {
+            modalContentWrapper.innerHTML = `
+                <div class="p-6">
+                    <h3 class="text-xl font-bold text-primary mb-4">Firebase Konfiguration</h3>
+                    <p class="text-slate-300 mb-4">Bitte geben Sie Ihre Firebase-Konfiguration als JSON ein, um fortzufahren.</p>
+                    <textarea id="config-input" rows="10" class="w-full p-2 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="{
+  &quot;apiKey&quot;: &quot;...&quot;,
+  &quot;authDomain&quot;: &quot;...&quot;,
+  &quot;projectId&quot;: &quot;...&quot;,
+  &quot;storageBucket&quot;: &quot;...&quot;,
+  &quot;messagingSenderId&quot;: &quot;...&quot;,
+  &quot;appId&quot;: &quot;...&quot;
+}"></textarea>
+                    <button id="save-config-btn" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors mt-4">Speichern und neu laden</button>
+                    <div id="config-error" class="text-secondary text-sm mt-2 hidden"></div>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+
+            document.getElementById('save-config-btn').addEventListener('click', () => {
+                const configInput = document.getElementById('config-input').value;
+                const errorEl = document.getElementById('config-error');
+                try {
+                    const parsedConfig = JSON.parse(configInput);
+                    localStorage.setItem('firebaseConfig', JSON.stringify(parsedConfig));
+                    window.location.reload();
+                } catch (e) {
+                    errorEl.textContent = 'Ungültiges JSON-Format. Bitte überprüfen Sie Ihre Eingabe.';
+                    errorEl.classList.remove('hidden');
+                }
+            });
+        }
+
 
         // =====================================
         // Firebase-Datenbank-Funktionen
@@ -125,6 +160,10 @@
          * @param {function} callback - Die Callback-Funktion, die mit den Daten aufgerufen wird.
          */
         function getSportEntries(uid, callback) {
+            if (!db) {
+                console.error("Firestore-Instanz ist nicht verfügbar.");
+                return () => {};
+            }
             const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
             const q = query(collection(db, privateEntriesPath));
             return onSnapshot(q, (snapshot) => {
@@ -144,6 +183,7 @@
          * @param {object} entry - Das hinzuzufügende Datenobjekt.
          */
         async function addSportEntry(entry) {
+            if (!db) return;
             try {
                 const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                 await addDoc(collection(db, privateEntriesPath), entry);
@@ -158,6 +198,7 @@
          * @param {string} docId - Die ID des zu löschenden Dokuments.
          */
         async function deleteSportEntry(docId) {
+            if (!db) return;
             try {
                 const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                 await deleteDoc(doc(db, privateEntriesPath, docId));
@@ -173,6 +214,7 @@
          * @param {object} newEntry - Die aktualisierten Daten.
          */
         async function updateSportEntry(docId, newEntry) {
+            if (!db) return;
             try {
                 const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                 await updateDoc(doc(db, privateEntriesPath, docId), newEntry);
@@ -188,6 +230,10 @@
          * @param {function} callback - Die Callback-Funktion.
          */
         function getUserDefinedSports(uid, callback) {
+            if (!db) {
+                console.error("Firestore-Instanz ist nicht verfügbar.");
+                return () => {};
+            }
             const privateSportsPath = `/artifacts/${appId}/users/${uid}/userDefinedSports/sportsDoc`;
             const docRef = doc(db, privateSportsPath);
             return onSnapshot(docRef, (docSnap) => {
@@ -205,6 +251,7 @@
          * @param {object} sports - Das Objekt mit Sportarten und Gewichtungen.
          */
         async function saveUserDefinedSports(sports) {
+            if (!db) return;
             try {
                 const privateSportsPath = `/artifacts/${appId}/users/${userId}/userDefinedSports/sportsDoc`;
                 await setDoc(doc(db, privateSportsPath), { sports });
@@ -218,6 +265,10 @@
          * @param {function} callback - Die Callback-Funktion, die mit den Daten aufgerufen wird.
          */
         function getLeaderboard(callback) {
+            if (!db) {
+                console.error("Firestore-Instanz ist nicht verfügbar.");
+                return () => {};
+            }
             // Korrigierter Pfad für das Leaderboard, um den Sicherheitsregeln zu entsprechen
             const publicLeaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
             const q = query(collection(db, publicLeaderboardPath));
@@ -239,6 +290,7 @@
          * @param {string} nickname - Der Spitzname des Benutzers.
          */
         async function updateLeaderboardStats(uid, nickname) {
+            if (!db) return;
             try {
                 const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
                 const q = query(collection(db, privateEntriesPath));
