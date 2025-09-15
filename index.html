@@ -1023,7 +1023,6 @@
             const sportEntriesStr = localStorage.getItem('sportEntries');
             const userDefinedSportsStr = localStorage.getItem('userDefinedSports');
             
-            // Führe Migration nur durch, wenn alle benötigten Daten im LocalStorage vorhanden sind
             if (!localStorageUserId || !sportEntriesStr) {
                 console.warn("Lokalstorage-Daten fehlen. Migration wird übersprungen.");
                 isMigrating = false;
@@ -1032,21 +1031,28 @@
             }
 
             try {
-                // Verwende einen Fallback-Spitznamen, falls keiner im LocalStorage vorhanden ist
-                const nicknameToUse = localStorageNickname && localStorageNickname.trim() !== '' ? localStorageNickname : `Benutzer-${firebaseUid.substring(0, 5)}`;
+                const entriesToMigrate = JSON.parse(sportEntriesStr).filter(entry => 
+                    entry.userId === localStorageUserId && entry.nickname === localStorageNickname
+                );
+                
+                if (entriesToMigrate.length === 0) {
+                     console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
+                     isMigrating = false;
+                     initializeListeners();
+                     return;
+                }
 
                 // 1. Benutzer im Leaderboard erstellen/aktualisieren
                 const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
-                await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: nicknameToUse, migratedFrom: localStorageUserId }, { merge: true });
+                await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
 
                 // 2. Sporteinträge migrieren
-                const entries = JSON.parse(sportEntriesStr);
                 const privateEntriesPath = `/artifacts/${appId}/users/${firebaseUid}/sportEntries`;
-                const batchPromises = entries.map(entry => {
+                const batchPromises = entriesToMigrate.map(entry => {
                     const firestoreEntry = {
                         ...entry,
                         userId: firebaseUid,
-                        nickname: nicknameToUse,
+                        nickname: localStorageNickname,
                         timestamp: new Date(entry.timestamp)
                     };
                     return addDoc(collection(db, privateEntriesPath), firestoreEntry);
@@ -1061,7 +1067,7 @@
                 }
                 
                 // 4. Statistiken im Leaderboard aktualisieren
-                await updateLeaderboardStats(firebaseUid, nicknameToUse);
+                await updateLeaderboardStats(firebaseUid, localStorageNickname);
 
                 // 5. LocalStorage bereinigen
                 localStorage.removeItem('userId');
