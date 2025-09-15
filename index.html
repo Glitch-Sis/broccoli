@@ -978,26 +978,37 @@
             const localStorageNickname = localStorage.getItem('nickname');
             const sportEntriesStr = localStorage.getItem('sportEntries');
             const userDefinedSportsStr = localStorage.getItem('userDefinedSports');
+            
+            // Führe Migration nur durch, wenn alle benötigten Daten im LocalStorage vorhanden sind
+            if (!localStorageUserId || !localStorageNickname || !sportEntriesStr) {
+                console.warn("Lokalstorage-Daten fehlen. Migration wird übersprungen.");
+                isMigrating = false;
+                // UI muss den Ladezustand verlassen
+                leaderboardLoaded = true;
+                sportsLoaded = true;
+                entriesLoaded = true;
+                checkAppReady();
+                return;
+            }
 
             try {
                 // 1. Benutzer im Leaderboard erstellen/aktualisieren
-                // Korrekter Pfad: `/artifacts/{appId}/public/data/leaderboard`
-                await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
+                const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
+                await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
 
                 // 2. Sporteinträge migrieren
-                if (sportEntriesStr) {
-                    const entries = JSON.parse(sportEntriesStr);
-                    const privateEntriesPath = `/artifacts/${appId}/users/${firebaseUid}/sportEntries`;
-                    for (const entry of entries) {
-                        const firestoreEntry = {
-                            ...entry,
-                            userId: firebaseUid,
-                            nickname: localStorageNickname,
-                            timestamp: new Date(entry.timestamp)
-                        };
-                        await addDoc(collection(db, privateEntriesPath), firestoreEntry);
-                    }
-                }
+                const entries = JSON.parse(sportEntriesStr);
+                const privateEntriesPath = `/artifacts/${appId}/users/${firebaseUid}/sportEntries`;
+                const batchPromises = entries.map(entry => {
+                    const firestoreEntry = {
+                        ...entry,
+                        userId: firebaseUid,
+                        nickname: localStorageNickname,
+                        timestamp: new Date(entry.timestamp)
+                    };
+                    return addDoc(collection(db, privateEntriesPath), firestoreEntry);
+                });
+                await Promise.all(batchPromises);
 
                 // 3. Benutzerdefinierte Sportarten migrieren
                 if (userDefinedSportsStr) {
@@ -1005,71 +1016,71 @@
                     const privateSportsPath = `/artifacts/${appId}/users/${firebaseUid}/userDefinedSports/sportsDoc`;
                     await setDoc(doc(db, privateSportsPath), { sports });
                 }
+                
+                // 4. Statistiken im Leaderboard aktualisieren
+                await updateLeaderboardStats(firebaseUid, localStorageNickname);
 
-                // 4. LocalStorage bereinigen
+                // 5. LocalStorage bereinigen
                 localStorage.removeItem('userId');
                 localStorage.removeItem('nickname');
                 localStorage.removeItem('sportEntries');
                 localStorage.removeItem('userDefinedSports');
 
-                isMigrating = false;
                 console.log("Migration erfolgreich!");
 
             } catch (error) {
                 console.error("Fehler bei der Migration:", error);
                 showDynamicModal("Migrationsfehler", "Ein Fehler ist bei der Datenmigration aufgetreten. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+            }
+            finally {
                 isMigrating = false;
             }
         }
 
         // Haupt-Logik für Authentifizierung und App-Start
         onAuthStateChanged(auth, async (user) => {
-            if (isMigrating) return;
-
             if (user) {
                 userId = user.uid;
 
-                // Migration von LocalStorage-Daten prüfen
-                const localStorageUserId = localStorage.getItem('userId');
-                const hasLocalData = localStorageUserId && localStorage.getItem('sportEntries');
-                
-                if (hasLocalData) {
+                const hasLocalData = localStorage.getItem('userId') && localStorage.getItem('sportEntries');
+                if (hasLocalData && !isMigrating) {
                     await migrateDataFromLocalStorage(userId);
                 }
 
-                // Standard-Login-Prozess
-                const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
-                try {
-                    const userDoc = await getDoc(userDocRef);
-                    
-                    if (userDoc.exists()) {
-                        currentUser = userDoc.data().nickname;
+                if (!isMigrating) {
+                    const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
+                    try {
+                        const userDoc = await getDoc(userDocRef);
+                        
+                        if (userDoc.exists()) {
+                            currentUser = userDoc.data().nickname;
 
-                        getLeaderboard((participants) => {
-                            renderLeaderboard(participants);
-                            leaderboardLoaded = true;
-                            checkAppReady();
-                        });
-                        getUserDefinedSports(userId, (sports) => {
-                            allSports = sports;
-                            renderSportSelect();
-                            renderSportWeightList();
-                            sportsLoaded = true;
-                            checkAppReady();
-                        });
-                        getSportEntries(userId, (myEntries) => {
-                            renderMyProgress(myEntries);
-                            renderSportSummary(myEntries);
-                            renderRecentActivities(myEntries);
-                            entriesLoaded = true;
-                            checkAppReady();
-                        });
-                    } else {
-                        renderNicknameForm();
+                            getLeaderboard((participants) => {
+                                renderLeaderboard(participants);
+                                leaderboardLoaded = true;
+                                checkAppReady();
+                            });
+                            getUserDefinedSports(userId, (sports) => {
+                                allSports = sports;
+                                renderSportSelect();
+                                renderSportWeightList();
+                                sportsLoaded = true;
+                                checkAppReady();
+                            });
+                            getSportEntries(userId, (myEntries) => {
+                                renderMyProgress(myEntries);
+                                renderSportSummary(myEntries);
+                                renderRecentActivities(myEntries);
+                                entriesLoaded = true;
+                                checkAppReady();
+                            });
+                        } else {
+                            renderNicknameForm();
+                        }
+                    } catch (error) {
+                        console.error("Fehler beim Laden der Benutzerdaten:", error);
+                        showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                     }
-                } catch (error) {
-                    console.error("Fehler beim Laden der Benutzerdaten:", error);
-                    showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 }
             } else {
                 try {
