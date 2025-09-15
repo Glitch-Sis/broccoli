@@ -980,7 +980,7 @@
             const userDefinedSportsStr = localStorage.getItem('userDefinedSports');
             
             // Führe Migration nur durch, wenn alle benötigten Daten im LocalStorage vorhanden sind
-            if (!localStorageUserId || !localStorageNickname || !sportEntriesStr) {
+            if (!localStorageUserId || !sportEntriesStr) {
                 console.warn("Lokalstorage-Daten fehlen. Migration wird übersprungen.");
                 isMigrating = false;
                 // UI muss den Ladezustand verlassen
@@ -992,9 +992,12 @@
             }
 
             try {
+                // Verwende einen Fallback-Spitznamen, falls keiner im LocalStorage vorhanden ist
+                const nicknameToUse = localStorageNickname && localStorageNickname.trim() !== '' ? localStorageNickname : `Benutzer-${firebaseUid.substring(0, 5)}`;
+
                 // 1. Benutzer im Leaderboard erstellen/aktualisieren
                 const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
-                await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
+                await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: nicknameToUse, migratedFrom: localStorageUserId }, { merge: true });
 
                 // 2. Sporteinträge migrieren
                 const entries = JSON.parse(sportEntriesStr);
@@ -1003,7 +1006,7 @@
                     const firestoreEntry = {
                         ...entry,
                         userId: firebaseUid,
-                        nickname: localStorageNickname,
+                        nickname: nicknameToUse,
                         timestamp: new Date(entry.timestamp)
                     };
                     return addDoc(collection(db, privateEntriesPath), firestoreEntry);
@@ -1018,7 +1021,7 @@
                 }
                 
                 // 4. Statistiken im Leaderboard aktualisieren
-                await updateLeaderboardStats(firebaseUid, localStorageNickname);
+                await updateLeaderboardStats(firebaseUid, nicknameToUse);
 
                 // 5. LocalStorage bereinigen
                 localStorage.removeItem('userId');
@@ -1034,6 +1037,7 @@
             }
             finally {
                 isMigrating = false;
+                checkAppReady();
             }
         }
 
@@ -1041,10 +1045,18 @@
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 userId = user.uid;
+                displayedUserId = userId;
 
                 const hasLocalData = localStorage.getItem('userId') && localStorage.getItem('sportEntries');
                 if (hasLocalData && !isMigrating) {
                     await migrateDataFromLocalStorage(userId);
+                    return;
+                }
+                
+                // Setze isAppReady auf false, um das Neuladen der App zu erzwingen,
+                // falls die Migration abgeschlossen ist.
+                if (isAppReady && !isMigrating) {
+                    isAppReady = false;
                 }
 
                 if (!isMigrating) {
