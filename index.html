@@ -981,6 +981,7 @@
 
             try {
                 // 1. Benutzer im Leaderboard erstellen/aktualisieren
+                // Korrekter Pfad: `/artifacts/{appId}/public/data/leaderboard`
                 await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
 
                 // 2. Sporteinträge migrieren
