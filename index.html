@@ -8,7 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Konfiguration für Tailwind CSS -->
     <script>
-        tailwind.config = {
+        tailwind.config = {a
             theme: {
                 extend: {
                     colors: {
@@ -187,7 +187,6 @@
             try {
                 const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                 await addDoc(collection(db, privateEntriesPath), entry);
-                await updateLeaderboardStats(userId, currentUser);
             } catch (e) {
                 console.error("Fehler beim Hinzufügen des Dokuments: ", e);
             }
@@ -202,7 +201,6 @@
             try {
                 const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                 await deleteDoc(doc(db, privateEntriesPath, docId));
-                await updateLeaderboardStats(userId, currentUser);
             } catch (e) {
                 console.error("Fehler beim Löschen des Dokuments: ", e);
             }
@@ -218,7 +216,6 @@
             try {
                 const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                 await updateDoc(doc(db, privateEntriesPath, docId), newEntry);
-                await updateLeaderboardStats(userId, currentUser);
             } catch (e) {
                 console.error("Fehler beim Aktualisieren des Dokuments: ", e);
             }
@@ -288,26 +285,21 @@
          * Aktualisiert die Statistiken eines Benutzers im öffentlichen Leaderboard.
          * @param {string} uid - Die Benutzer-ID.
          * @param {string} nickname - Der Spitzname des Benutzers.
+         * @param {Array<object>} userEntries - Alle Einträge des Benutzers.
          */
-        async function updateLeaderboardStats(uid, nickname) {
+        async function updateLeaderboardStats(uid, nickname, userEntries) {
             if (!db) return;
             try {
-                const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
-                const q = query(collection(db, privateEntriesPath));
-                const querySnapshot = await getDocs(q);
-
                 let totalMinutes = 0;
                 let totalWeightedMinutes = 0;
                 const sportsData = allSports;
 
-                querySnapshot.forEach(doc => {
-                    const entry = doc.data();
+                userEntries.forEach(entry => {
                     const weight = sportsData[entry.sport] || 1.0;
                     totalMinutes += entry.minutes;
                     totalWeightedMinutes += entry.minutes * weight;
                 });
 
-                // Korrigierter Pfad für das Leaderboard, um den Sicherheitsregeln zu entsprechen
                 const publicDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, uid);
                 await setDoc(publicDocRef, {
                     nickname: nickname,
@@ -466,7 +458,6 @@
                                         <button type="button" data-minutes="10" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
                                         <button type="button" data-minutes="15" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
                                         <button type="button" data-minutes="30" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
-                                        <button type="button" data-minutes="60" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
                                         <button type="button" id="clear-minutes-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
                                     </div>
                                 </div>
@@ -1052,6 +1043,7 @@
                 entriesLoaded = true;
                 checkAppReady();
                 renderDashboard();
+                updateLeaderboardStats(userId, currentUser, entries);
             });
         }
 
@@ -1118,10 +1110,7 @@
                     await setDoc(doc(db, privateSportsPath), { sports });
                 }
                 
-                // 4. Statistiken im Leaderboard aktualisieren
-                await updateLeaderboardStats(firebaseUid, localStorageNickname);
-
-                // 5. LocalStorage bereinigen
+                // 4. LocalStorage bereinigen
                 localStorage.removeItem('userId');
                 localStorage.removeItem('nickname');
                 localStorage.removeItem('sportEntries');
