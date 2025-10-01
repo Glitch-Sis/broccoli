@@ -1,1184 +1,1217 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sport Challenge App</title>
-    <!-- Tailwind CSS CDN für das Styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Konfiguration für Tailwind CSS -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#3b82f6', // Blau
-                        secondary: '#ef4444', // Rot
-                        accent: '#22c55e', // Grün
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%);
-            color: #f3f4f6;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .card {
-            transition: all 0.3s ease-in-out;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-        .progress-bar-fill {
-            transition: width 0.5s ease-in-out;
-        }
-        .animate-pulse-slow {
-            animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        @keyframes pulse-slow {
-            0%, 100% {
-                opacity: 1;
-            }
-            50% {
-                opacity: .5;
-            }
-        }
-    </style>
-
-    <script type="module">
-        // =====================================
-        // Globale Variablen und UI-Elemente
-        // =====================================
-        const SPORT_WEIGHTS = {
-            'Laufen': 1.5,
-            'Schwimmen': 1.8,
-            'Radfahren': 1.2,
-            'Krafttraining': 1.3,
-            'Yoga': 0.8,
-            'Wandern': 0.9,
-            'Step Aerobic': 1.6,
-            'HIIT': 1.7,
-            'Kayaking': 1.1,
-            'Andere': 1.0
-        };
-        const GOAL_MINUTES = 8000;
-        
-        const appContainer = document.getElementById('app-container');
-        const modal = document.getElementById('message-modal');
-        const modalContentWrapper = document.getElementById('modal-content-wrapper');
-        
-        let userId;
-        let currentUser;
-        let displayedUserId;
-        let myProgressView = 'minutes';
-        let chartTimeframe = 'week';
-        let allSports = { ...SPORT_WEIGHTS };
-        // Ändere `editingIndex` zu `editingTimestamp` für eine eindeutige Identifizierung
-        let editingTimestamp = null;
-
-        // =====================================
-        // Hilfsfunktionen für das Datenmanagement
-        // =====================================
-
-        /** Lädt die Sporteinträge aus dem Local Storage. */
-        function loadData() {
-            const data = localStorage.getItem('sportEntries');
-            return data ? JSON.parse(data) : [];
-        }
-
-        /** Speichert die Sporteinträge im Local Storage. */
-        function saveData(data) {
-            localStorage.setItem('sportEntries', JSON.stringify(data));
-        }
-
-        /** Lädt benutzerdefinierte Sportarten aus dem Local Storage. */
-        function loadSports() {
-            const sports = localStorage.getItem('userDefinedSports');
-            return sports ? JSON.parse(sports) : {};
-        }
-
-        /** Speichert benutzerdefinierte Sportarten im Local Storage. */
-        function saveSports(sports) {
-            localStorage.setItem('userDefinedSports', JSON.stringify(sports));
-        }
-
-        /** Lädt Daten und Sportarten aus dem Local Storage und aktualisiert die UI. */
-        function loadSportsAndData() {
-            allSports = { ...SPORT_WEIGHTS, ...loadSports() };
-            renderSportSelect();
-            renderSportWeightList();
-            updateUI();
-        }
-
-        /** Exportiert alle lokalen Daten als JSON-Datei. */
-        function exportData() {
-            const data = {
-                sportEntries: loadData(),
-                userDefinedSports: loadSports(),
-                userId: localStorage.getItem('userId'),
-                nickname: localStorage.getItem('nickname')
-            };
-            const dataStr = JSON.stringify(data, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `sport-challenge-data-${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-        
-        /** Teilt die lokalen Daten als JSON-Datei über die native Web Share API. */
-        async function shareData() {
-            const data = {
-                sportEntries: loadData(),
-                userDefinedSports: loadSports(),
-                userId: localStorage.getItem('userId'),
-                nickname: localStorage.getItem('nickname')
-            };
-            
-            const dataStr = JSON.stringify(data, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
-            const file = new File([blob], `sport-challenge-data-${new Date().toISOString().split('T')[0]}.json`, { type: 'application/json' });
-
-            // Überprüfe, ob die Web Share API verfügbar ist
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        title: 'Meine Sport Challenge Daten',
-                        text: 'Hier sind meine Sportdaten aus der Sport Challenge App.',
-                        files: [file]
-                    });
-                } catch (error) {
-                    console.error('Fehler beim Teilen:', error);
-                    // Zeige ein Fehlermodal an
-                    showDynamicModal("Teilen fehlgeschlagen", "Ein Fehler ist beim Teilen aufgetreten. Bitte versuche es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            } else {
-                // Fallback: Wenn Teilen nicht möglich ist, nutze den normalen Download
-                exportData();
-                showDynamicModal("Teilen nicht möglich", "Die Teilen-Funktion wird von deinem Browser nicht unterstützt. Deine Daten wurden stattdessen heruntergeladen.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-
-        /**
-         * Verarbeitet den Import der Daten (unabhängig von der Quelle).
-         * @param {object} importedData - Das geparste Datenobjekt.
-         */
-        function processImportedData(importedData) {
-            const currentEntries = loadData();
-            const currentSports = loadSports();
-            let newEntriesAdded = 0;
-
-            importedData.sportEntries.forEach(importedEntry => {
-                const isDuplicate = currentEntries.some(existingEntry => 
-                    existingEntry.userId === importedEntry.userId &&
-                    existingEntry.nickname === importedEntry.nickname &&
-                    existingEntry.sport === importedEntry.sport &&
-                    existingEntry.minutes === importedEntry.minutes &&
-                    existingEntry.timestamp === importedEntry.timestamp
-                );
-                if (!isDuplicate) {
-                    currentEntries.push(importedEntry);
-                    newEntriesAdded++;
-                }
-            });
-            
-            const mergedSports = { ...currentSports, ...importedData.userDefinedSports };
-            saveData(currentEntries);
-            saveSports(mergedSports);
-
-            if (importedData.userId && !localStorage.getItem('userId')) localStorage.setItem('userId', importedData.userId);
-            if (importedData.nickname && !localStorage.getItem('nickname')) localStorage.setItem('nickname', importedData.nickname);
-            
-            modal.classList.add('hidden');
-            updateUI();
-            showDataSyncModal();
-            document.getElementById('sync-message').textContent = `Import erfolgreich! ${newEntriesAdded} neue Einträge wurden hinzugefügt.`;
-        }
-
-        /** Importiert Daten aus einer JSON-Datei und führt sie mit bestehenden Daten zusammen. */
-        function importFile(file) {
-            if (!file) {
-                showDynamicModal("Fehler beim Import", "Keine Datei ausgewählt.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const importedData = JSON.parse(e.target.result);
-                    if (importedData.sportEntries && importedData.userDefinedSports) {
-                        showDynamicModal(
-                            "Daten importieren",
-                            "Möchten Sie die Daten aus der Datei zu Ihren bestehenden Daten hinzufügen?",
-                            [
-                                { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: () => {
-                                    processImportedData(importedData);
-                                }},
-                                { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
-                            ]
-                        );
-                    } else {
-                        showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                    }
-                } catch (error) {
-                    showDynamicModal("Fehler beim Import", "Ungültiges Dateiformat. Bitte wähle eine gültige JSON-Datei.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        /** Importiert Daten aus einem Textfeld. */
-        function importFromText(jsonText) {
-            if (!jsonText) {
-                showDynamicModal("Fehler beim Import", "Textfeld ist leer.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                return;
-            }
-            try {
-                const importedData = JSON.parse(jsonText);
-                if (importedData.sportEntries && importedData.userDefinedSports) {
-                    showDynamicModal(
-                        "Daten importieren",
-                        "Möchten Sie die Daten aus dem Text zu Ihren bestehenden Daten hinzufügen?",
-                        [
-                            { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: () => {
-                                processImportedData(importedData);
-                            }},
-                            { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
-                        ]
-                    );
-                } else {
-                    showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            } catch (error) {
-                showDynamicModal("Fehler beim Import", "Ungültiges JSON-Format. Bitte füge gültigen JSON-Text ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-        
-        // =====================================
-        // UI Rendering und Update Funktionen
-        // =====================================
-
-        /**
-         * Zeigt ein dynamisches modales Fenster mit anpassbarem Titel, Nachricht und Buttons an.
-         * @param {string} title - Der Titel des Modals.
-         * @param {string} message - Die Nachricht des Modals.
-         * @param {Array<Object>} buttons - Ein Array von Button-Konfigurationsobjekten.
-         */
-        function showDynamicModal(title, message, buttons) {
-            modalContentWrapper.innerHTML = `
-                <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
-                <p class="text-slate-300 mb-4">${message}</p>
-                <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
-            `;
-            modal.classList.remove('hidden');
-
-            const buttonContainer = document.getElementById('modal-buttons');
-            buttons.forEach(btnConfig => {
-                const button = document.createElement('button');
-                button.id = btnConfig.id;
-                button.textContent = btnConfig.text;
-                button.className = btnConfig.class;
-                button.addEventListener('click', btnConfig.onClick);
-                buttonContainer.appendChild(button);
-            });
-        }
-        
-        /** Rendert das Anmeldeformular für den Spitznamen. */
-        function renderNicknameForm() {
-            appContainer.innerHTML = `
-                <div class="text-center p-6 bg-slate-700 rounded-xl">
-                    <h2 class="text-2xl font-semibold mb-4 text-white">Willkommen!</h2>
-                    <p class="text-slate-300 mb-4">Geben Sie Ihren Spitznamen ein, um zu beginnen.</p>
-                    <form id="nickname-form" class="space-y-4">
-                        <input type="text" id="nickname-input" placeholder="Ihr Spitzname" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                        <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Starten</button>
-                    </form>
-                </div>
-            `;
-            const nicknameForm = document.getElementById('nickname-form');
-            const nicknameInput = document.getElementById('nickname-input');
-            nicknameForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                const nickname = nicknameInput.value.trim();
-                if (nickname) {
-                    currentUser = nickname;
-                    userId = `user-${Math.random().toString(36).substr(2, 9)}`;
-                    displayedUserId = userId;
-                    localStorage.setItem('userId', userId);
-                    localStorage.setItem('nickname', nickname);
-                    renderApp();
-                    updateUI();
-                } else {
-                    showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            });
-        }
-
-        /** Rendert die Haupt-App. */
-        function renderApp() {
-            appContainer.innerHTML = `
-                <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
-                    <!-- Navigationsleiste -->
-                    <nav class="bg-slate-700 rounded-xl p-2 flex flex-col sm:flex-row justify-start gap-2">
-                        <button data-section="dashboard" class="nav-button bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Dashboard</button>
-                        <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sportart eintragen</button>
-                        <button data-section="add-sport" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
-                    </nav>
-                    <!-- Abschnitt für das Dashboard -->
-                    <div id="dashboard-section" class="space-y-6">
-                        <!-- Teilnehmer Abschnitt -->
-                        <div class="card bg-slate-700 p-6 rounded-xl">
-                            <h2 class="text-2xl font-bold text-white mb-4">Teilnehmer</h2>
-                            <div id="leaderboard" class="space-y-4">
-                                <!-- Die Rangliste wird hier geladen -->
-                            </div>
-                        </div>
-                        <!-- Fortschritt Abschnitt -->
-                        <div class="card bg-slate-700 p-6 rounded-xl">
-                            <div class="flex items-center justify-between mb-2">
-                                <h2 class="text-2xl font-bold text-white">Fortschritt</h2>
-                            </div>
-                            <div class="flex items-center justify-between mb-2 text-sm text-slate-300">
-                                <span id="my-progress-label">Gesammelte Minuten</span>
-                                <span id="my-progress-value">0</span>
-                            </div>
-                            <div class="flex justify-center mb-4">
-                                <button id="toggle-progress-btn" class="text-sm text-slate-400 py-1 px-3 rounded-full border border-slate-600 hover:bg-slate-600 transition-colors">
-                                    Umschalten
-                                </button>
-                            </div>
-                            
-                            <!-- Fortschrittsbalken -->
-                            <div class="h-6 bg-slate-800 rounded-full overflow-hidden mb-4 shadow-inner">
-                                <div id="progress-bar" class="h-full bg-accent progress-bar-fill rounded-full" style="width: 0%;"></div>
-                            </div>
-                            <p id="progress-text" class="text-center text-sm font-semibold text-slate-400"></p>
-                            
-                            <div class="mt-8">
-                                <h3 class="text-lg font-bold text-white mb-2">Aktivität</h3>
-                                <div class="flex justify-center gap-2 mb-4">
-                                    <button data-timeframe="week" class="timeframe-btn bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
-                                    <button data-timeframe="month" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
-                                    <button data-timeframe="year" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
-                                </div>
-                                <canvas id="weekly-chart" class="w-full h-48"></canvas>
-                            </div>
-                        </div>
-                        <!-- Minuten pro Sportart Auswertung -->
-                        <div class="card bg-slate-700 p-6 rounded-xl">
-                            <h2 class="text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
-                            <div id="sport-summary-list" class="space-y-2">
-                                <!-- Der Inhalt wird hier geladen -->
-                            </div>
-                        </div>
-                        <!-- Letzte Aktivitäten Abschnitt -->
-                        <div class="card bg-slate-700 p-6 rounded-xl">
-                            <h2 class="text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
-                            <div id="recent-activities" class="space-y-4">
-                                <!-- Die Aktivitäten werden hier geladen -->
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Abschnitt zum Eintragen von Sport -->
-                    <div id="add-entry-section" class="hidden">
-                        <div class="card bg-slate-700 p-6 rounded-xl">
-                            <h2 class="text-2xl font-bold text-white mb-4">Sportart hinzufügen</h2>
-                            <form id="add-entry-form" class="space-y-4">
-                                <div>
-                                    <label for="sport-select" class="block text-slate-300 font-semibold mb-1">Sportart</label>
-                                    <select id="sport-select" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                        <!-- Sportarten werden hier dynamisch geladen -->
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
-                                    <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                </div>
-                                <div>
-                                    <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
-                                    <input type="number" id="minutes-input" value="0" min="0" class="w-full p-3 rounded-lg bg-slate-800 text-white text-center text-lg font-bold border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                    <div class="mt-2 grid grid-cols-3 gap-2">
-                                        <button type="button" data-minutes="5" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
-                                        <button type="button" data-minutes="10" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
-                                        <button type="button" data-minutes="15" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
-                                        <button type="button" data-minutes="30" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
-                                        <button type="button" data-minutes="60" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
-                                        <button type="button" id="clear-minutes-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
-                                    </div>
-                                </div>
-                                <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Eintrag hinzufügen</button>
-                            </form>
-                        </div>
-                    </div>
-                    <!-- Abschnitt zum Hinzufügen eigener Sportarten -->
-                    <div id="add-sport-section" class="hidden">
-                        <div class="card bg-slate-700 p-6 rounded-xl">
-                            <h2 class="text-2xl font-bold text-white mb-4">Eigene Sportart hinzufügen</h2>
-                            <form id="add-sport-form" class="space-y-4">
-                                <div>
-                                    <label for="new-sport-name" class="block text-slate-300 font-semibold mb-1">Name der Sportart</label>
-                                    <input type="text" id="new-sport-name" placeholder="z.B. Boxen" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                </div>
-                                <div>
-                                    <label for="new-sport-weight" class="block text-slate-300 font-semibold mb-1">Gewichtung (z.B. 1.5)</label>
-                                    <input type="number" step="0.1" id="new-sport-weight" placeholder="z.B. 1.5" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                </div>
-                                <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sportart hinzufügen</button>
-                            </form>
-                            <div class="mt-8">
-                                <h3 class="text-lg font-bold text-white mb-2">Aktuelle Sportarten und Gewichtungen</h3>
-                                <div id="sport-weight-list" class="space-y-2">
-                                    <!-- Die Liste wird hier geladen -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            const dateInput = document.getElementById('date-input');
-            const today = new Date().toISOString().split('T')[0];
-            dateInput.value = today;
-
-            setupEventListeners();
-            loadSportsAndData();
-            showSection('dashboard');
-        }
-
-        /**
-         * Zeigt einen bestimmten Abschnitt an und verbirgt die anderen.
-         * @param {string} sectionId - Die ID des anzuzeigenden Abschnitts.
-         */
-        function showSection(sectionId) {
-            document.querySelectorAll('.nav-button').forEach(btn => {
-                const isSelected = btn.dataset.section === sectionId;
-                btn.classList.toggle('bg-primary', isSelected);
-                btn.classList.toggle('hover:bg-blue-700', isSelected);
-                btn.classList.toggle('bg-slate-600', !isSelected);
-                btn.classList.toggle('hover:bg-slate-500', !isSelected);
-            });
-
-            document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
-            document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
-            document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
-        }
-        
-        // =====================================
-        // UI Rendering und Update Funktionen
-        // =====================================
-
-        /** Rendert die Sportarten-Dropdown-Liste neu */
-        function renderSportSelect() {
-            const sportSelect = document.getElementById('sport-select');
-            if (sportSelect) {
-                sportSelect.innerHTML = Object.keys(allSports).map(sport => 
-                    `<option value="${sport}">${sport}</option>`
-                ).join('');
-            }
-        }
-        
-        /** Rendert die Liste der Sportarten und ihrer Gewichtungen. */
-        function renderSportWeightList() {
-            const sportWeightListEl = document.getElementById('sport-weight-list');
-            if (!sportWeightListEl) return;
-            
-            sportWeightListEl.innerHTML = Object.entries(allSports).map(([sport, weight]) => `
-                <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
-                    <span class="text-white font-semibold">${sport}</span>
-                    <span class="text-primary font-bold">Gewichtung: ${weight}</span>
-                </div>
-            `).join('');
-        }
-
-        /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
-        function showUserProgress(selectedUserId) {
-            displayedUserId = selectedUserId;
-            updateUI();
-        }
-
-        /** Aktualisiert die gesamte Benutzeroberfläche. */
-        function updateUI() {
-            const data = loadData();
-            renderMyProgress(data);
-            renderLeaderboard(data);
-            renderSportSummary(data);
-            renderRecentActivities(data);
-        }
-
-        function renderMyProgress(data) {
-            const myProgressLabelEl = document.getElementById('my-progress-label');
-            const myProgressValueEl = document.getElementById('my-progress-value');
-            const progressBarEl = document.getElementById('progress-bar');
-            const progressTextEl = document.getElementById('progress-text');
-
-            if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !data) return;
-
-            const myEntries = data.filter(entry => entry.userId === displayedUserId);
-            const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
-            const totalWeightedMinutes = myEntries.reduce((sum, entry) => {
-                const weight = allSports[entry.sport] || 1.0;
-                return sum + (entry.minutes * weight);
-            }, 0);
-
-            let displayValue = (myProgressView === 'minutes') ? totalMinutes : totalWeightedMinutes;
-            let progress = (displayValue / GOAL_MINUTES) * 100;
-            
-            myProgressLabelEl.textContent = (myProgressView === 'minutes') ? 'Gesammelte Minuten' : 'Gewichtete Minuten';
-            myProgressValueEl.textContent = displayValue.toFixed(myProgressView === 'weighted' ? 1 : 0);
-            progressBarEl.style.width = `${Math.min(100, progress)}%`;
-            progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}%`;
-
-            if (progress >= 100) {
-                progressBarEl.classList.remove('bg-accent');
-                progressBarEl.classList.add('bg-primary', 'animate-pulse-slow');
-                progressTextEl.textContent = "Ziel erreicht! Herzlichen Glückwunsch! 🎉";
-            } else {
-                progressBarEl.classList.remove('bg-primary', 'animate-pulse-slow');
-                progressBarEl.classList.add('bg-accent');
-            }
-
-            renderWeeklyProgressGraph(myEntries);
-        }
-        
-        function renderWeeklyProgressGraph(myEntries) {
-            const canvas = document.getElementById('weekly-chart');
-            if (!canvas || !myEntries) return;
-
-            const containerWidth = canvas.parentElement.clientWidth;
-            canvas.width = containerWidth;
-            canvas.height = 192;
-
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            let dataPoints = [];
-            let labels = [];
-
-            const now = new Date();
-            if (chartTimeframe === 'week') {
-                const dailyMinutes = new Array(7).fill(0);
-                const oneWeekAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
-                myEntries.filter(entry => new Date(entry.timestamp).getTime() > oneWeekAgo)
-                    .forEach(entry => {
-                        const entryDate = new Date(entry.timestamp);
-                        const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-                        if (diffDays >= 0 && diffDays < 7) dailyMinutes[6 - diffDays] += entry.minutes;
-                    });
-                dataPoints = dailyMinutes;
-                for (let i = 6; i >= 0; i--) {
-                    const date = new Date(now);
-                    date.setDate(now.getDate() - i);
-                    labels.push(date.toLocaleDateString('de-DE', { weekday: 'short' }));
-                }
-            } else if (chartTimeframe === 'month') {
-                const weeklyMinutes = new Array(4).fill(0);
-                const oneMonthAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
-                myEntries.filter(entry => new Date(entry.timestamp).getTime() > oneMonthAgo)
-                    .forEach(entry => {
-                        const entryDate = new Date(entry.timestamp);
-                        const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-                        const weekIndex = Math.floor(diffDays / 7);
-                        if (weekIndex >= 0 && weekIndex < 4) weeklyMinutes[3 - weekIndex] += entry.minutes;
-                    });
-                dataPoints = weeklyMinutes;
-                labels = ['Woche 1', 'Woche 2', 'Woche 3', 'Woche 4'];
-            } else if (chartTimeframe === 'year') {
-                const monthlyMinutes = new Array(12).fill(0);
-                const oneYearAgo = now.getTime() - 365 * 24 * 60 * 60 * 1000;
-                myEntries.filter(entry => new Date(entry.timestamp).getTime() > oneYearAgo)
-                    .forEach(entry => {
-                        const entryDate = new Date(entry.timestamp);
-                        const diffMonths = (now.getFullYear() - entryDate.getFullYear()) * 12 + (now.getMonth() - entryDate.getMonth());
-                        if (diffMonths >= 0 && diffMonths < 12) monthlyMinutes[11 - diffMonths] += entry.minutes;
-                    });
-                dataPoints = monthlyMinutes;
-                for (let i = 11; i >= 0; i--) {
-                    const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                    labels.push(monthDate.toLocaleDateString('de-DE', { month: 'short' }));
-                }
-            }
-            
-            const maxMinutes = Math.max(...dataPoints, 1);
-            const padding = 30;
-            const chartHeight = canvas.height - 2 * padding;
-            const chartWidth = canvas.width - 2 * padding;
-            const pointSpacing = chartWidth / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
-
-            ctx.beginPath();
-            ctx.strokeStyle = '#22c55e';
-            ctx.lineWidth = 3;
-            const points = dataPoints.map((value, index) => ({
-                x: padding + index * pointSpacing,
-                y: padding + chartHeight - (value / maxMinutes) * chartHeight
-            }));
-            if (points.length > 0) {
-                ctx.moveTo(points[0].x, points[0].y);
-                points.forEach(point => ctx.lineTo(point.x, point.y));
-            }
-            ctx.stroke();
-            
-            ctx.textAlign = 'right';
-            ctx.fillStyle = '#94a3b8';
-            ctx.font = '10px Inter';
-            const yLabels = [0, Math.floor(maxMinutes / 2), maxMinutes];
-            yLabels.forEach(label => {
-                const y = padding + chartHeight - (label / maxMinutes) * chartHeight;
-                ctx.fillText(label, padding - 5, y + 4);
-            });
-            
-            points.forEach(point => {
-                ctx.beginPath();
-                ctx.fillStyle = '#22c55e';
-                ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-                ctx.fill();
-            });
-
-            ctx.fillStyle = '#f3f4f6';
-            ctx.font = '12px Inter';
-            ctx.textAlign = 'center';
-            labels.forEach((label, index) => {
-                const x = padding + index * pointSpacing;
-                ctx.fillStyle = '#94a3b8';
-                ctx.fillText(label, x, canvas.height - 5);
-                ctx.fillStyle = '#f3f4f6';
-                ctx.fillText(dataPoints[index], x, points[index].y - 10);
-            });
-        }
-
-        function renderLeaderboard(data) {
-            const leaderboardEl = document.getElementById('leaderboard');
-            if (!leaderboardEl || !data) return;
-
-            const participants = {};
-            data.forEach(entry => {
-                const userKey = entry.userId;
-                if (!participants[userKey]) {
-                    participants[userKey] = {
-                        userId: userKey,
-                        nickname: entry.nickname,
-                        minutes: 0,
-                        weightedMinutes: 0
-                    };
-                }
-                const weight = allSports[entry.sport] || 1.0;
-                participants[userKey].minutes += entry.minutes;
-                participants[userKey].weightedMinutes += entry.minutes * weight;
-            });
-
-            let participantArray = Object.values(participants);
-
-            participantArray.sort((a, b) => b.minutes - a.minutes);
-            const minutesLeader = participantArray[0] || { minutes: -1, userId: null };
-            participantArray.sort((a, b) => b.weightedMinutes - a.weightedMinutes);
-            const weightedLeader = participantArray[0] || { weightedMinutes: -1, userId: null };
-
-            const loggedInUser = participantArray.find(p => p.userId === userId);
-            let sortedParticipants = loggedInUser ? [loggedInUser, ...participantArray.filter(p => p.userId !== userId)] : participantArray;
-
-            leaderboardEl.innerHTML = `
-                <div class="flex flex-col sm:flex-row gap-4">
-                    ${sortedParticipants.map(p => {
-                        const isMinutesLeader = p.userId === minutesLeader.userId;
-                        const isWeightedLeader = p.userId === weightedLeader.userId;
-                        const isActiveUser = p.userId === displayedUserId;
-                        
-                        return `
-                            <div data-user-id="${p.userId}" class="flex-1 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
-                                <h3 class="text-xl font-bold mb-2 text-white">
-                                    ${p.nickname}
-                                    ${p.userId === userId ? ' (Du)' : ''}
-                                </h3>
-                                <div class="space-y-2">
-                                    <div class="p-3 rounded-lg bg-slate-700">
-                                        <div class="text-slate-400 text-sm">Gesammelte Minuten</div>
-                                        <div class="text-2xl font-extrabold ${isMinutesLeader ? 'text-primary' : 'text-white'}">
-                                            ${p.minutes.toFixed(0)}
-                                            ${isMinutesLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
-                                        </div>
-                                    </div>
-                                    <div class="p-3 rounded-lg bg-slate-700">
-                                        <div class="text-slate-400 text-sm">Gewichtete Minuten</div>
-                                        <div class="text-2xl font-extrabold ${isWeightedLeader ? 'text-accent' : 'text-white'}">
-                                            ${p.weightedMinutes.toFixed(1)}
-                                            ${isWeightedLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="text-sm text-slate-500 mt-2">${p.userId}</div>
-                                </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-        }
-
-        function renderSportSummary(data) {
-            const summaryEl = document.getElementById('sport-summary-list');
-            if (!summaryEl || !data) return;
-
-            const myEntries = data.filter(entry => entry.userId === displayedUserId);
-            const sportMinutes = {};
-            myEntries.forEach(entry => {
-                const sportName = entry.sport;
-                if (!sportMinutes[sportName]) sportMinutes[sportName] = 0;
-                sportMinutes[sportName] += entry.minutes;
-            });
-            const sortedSports = Object.keys(sportMinutes).sort((a, b) => sportMinutes[b] - sportMinutes[a]);
-
-            summaryEl.innerHTML = sortedSports.map(sport => `
-                <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
-                    <span class="text-white font-semibold">${sport}</span>
-                    <span class="text-primary font-bold">${sportMinutes[sport]} Minuten</span>
-                </div>
-            `).join('');
-        }
-        
-        function renderRecentActivities(data) {
-            const recentActivitiesEl = document.getElementById('recent-activities');
-            if (!recentActivitiesEl || !data) return;
-
-            const displayedActivities = data.filter(entry => entry.userId === displayedUserId);
-            const sortedActivities = displayedActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-            
-            recentActivitiesEl.innerHTML = sortedActivities.map(activity => {
-                const date = new Date(activity.timestamp);
-                const dateString = date.toLocaleDateString('de-DE');
-                const timeString = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                const isMyEntry = activity.userId === userId;
-                
-                // Nutze den Zeitstempel als eindeutige ID für die Bearbeitung
-                if (isMyEntry && activity.timestamp === editingTimestamp) {
-                    return `
-                        <div class="flex flex-col p-4 bg-slate-800 rounded-lg border border-primary" data-timestamp="${activity.timestamp}">
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="text-white font-semibold">Eintrag von ${activity.nickname} bearbeiten</span>
-                                <div class="flex space-x-2">
-                                    <button data-action="save" class="text-xs text-accent hover:text-green-400 transition-colors">Speichern</button>
-                                    <button data-action="cancel" class="text-xs text-secondary hover:text-red-400 transition-colors">Abbrechen</button>
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                <select id="edit-sport-select" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm">
-                                    ${Object.keys(allSports).map(sport => 
-                                        `<option value="${sport}" ${sport === activity.sport ? 'selected' : ''}>${sport}</option>`
-                                    ).join('')}
-                                </select>
-                                <input type="number" id="edit-minutes-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${activity.minutes}" min="1">
-                                <input type="date" id="edit-date-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${activity.timestamp.split('T')[0]}">
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    const actionButtons = isMyEntry ? `
-                        <div class="flex space-x-2">
-                            <button data-action="edit" data-timestamp="${activity.timestamp}" class="text-xs text-slate-400 hover:text-white transition-colors">Bearbeiten</button>
-                            <button data-action="delete" data-timestamp="${activity.timestamp}" class="text-xs text-secondary hover:text-red-400 transition-colors">Löschen</button>
-                        </div>
-                    ` : '';
-                    return `
-                        <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
-                            <div>
-                                <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Minuten</span>
-                                <span class="text-accent font-semibold">${activity.sport}</span> gemacht.
-                            </div>
-                            <div class="flex-shrink-0 text-right">
-                                <span class="text-xs text-slate-500 block mb-1">${dateString} ${timeString}</span>
-                                ${actionButtons}
-                            </div>
-                        </div>
-                    `;
-                }
-            }).join('');
-        }
-        
-        // =====================================
-        // Event-Listener Setup
-        // =====================================
-        
-        function setupEventListeners() {
-            document.querySelectorAll('.nav-button').forEach(btn => {
-                btn.addEventListener('click', () => showSection(btn.dataset.section));
-            });
-
-            document.getElementById('add-entry-form')?.addEventListener('submit', handleFormSubmit);
-            document.getElementById('add-sport-form')?.addEventListener('submit', handleAddSportFormSubmit);
-            document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
-                myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
-                updateUI();
-            });
-
-            document.querySelectorAll('.timeframe-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    chartTimeframe = btn.dataset.timeframe;
-                    document.querySelectorAll('.timeframe-btn').forEach(b => {
-                        const isSelected = b.dataset.timeframe === chartTimeframe;
-                        b.classList.toggle('bg-primary', isSelected);
-                        b.classList.toggle('hover:bg-blue-700', isSelected);
-                        b.classList.toggle('bg-slate-600', !isSelected);
-                        b.classList.toggle('hover:bg-slate-500', !isSelected);
-                    });
-                    renderWeeklyProgressGraph(loadData().filter(entry => entry.userId === displayedUserId));
-                });
-            });
-
-            // Event-Delegation für Minuten-Buttons
-            document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
-                const target = e.target;
-                const minutesInput = document.getElementById('minutes-input');
-                if (target.classList.contains('minutes-btn')) {
-                    let currentMinutes = parseInt(minutesInput.value, 10);
-                    currentMinutes += parseInt(target.dataset.minutes, 10);
-                    minutesInput.value = currentMinutes;
-                } else if (target.id === 'clear-minutes-btn') {
-                    minutesInput.value = '0';
-                }
-            });
-
-            const sportSelect = document.getElementById('sport-select');
-            if (sportSelect) {
-                sportSelect.addEventListener('change', () => {
-                    document.getElementById('minutes-input').value = '0';
-                });
-            }
-
-            // Event-Delegation für die Liste der letzten Aktivitäten
-            document.getElementById('recent-activities')?.addEventListener('click', (e) => {
-                const target = e.target;
-                // Ändere auf data-timestamp, um den eindeutigen Eintrag zu identifizieren
-                const timestamp = target.dataset.timestamp;
-
-                if (target.dataset.action === 'delete') handleDeleteClick(timestamp);
-                else if (target.dataset.action === 'edit') handleEditClick(timestamp);
-                else if (target.dataset.action === 'save') handleSaveEdit(timestamp);
-                else if (target.dataset.action === 'cancel') handleCancelEdit();
-            });
-
-            // Event-Delegation für die Rangliste
-            document.getElementById('leaderboard')?.addEventListener('click', (e) => {
-                const target = e.target.closest('[data-user-id]');
-                if (target) showUserProgress(target.dataset.userId);
-            });
-
-            // Event-Listener für den Daten-Sync-Button in der Fußzeile
-            document.getElementById('data-sync-btn')?.addEventListener('click', showDataSyncModal);
-        }
-        
-        // =====================================
-        // Formular-Handling
-        // =====================================
-        function handleFormSubmit(e) {
-            e.preventDefault();
-            const sportSelect = document.getElementById('sport-select');
-            const dateInput = document.getElementById('date-input');
-            const minutesInput = document.getElementById('minutes-input');
-            const sport = sportSelect.value;
-            const date = dateInput.value;
-            const minutes = parseInt(minutesInput.value, 10);
-
-            if (minutes > 0 && date && userId && currentUser) {
-                const newEntry = {
-                    userId: userId,
-                    nickname: currentUser,
-                    sport: sport,
-                    minutes: minutes,
-                    timestamp: new Date(date).toISOString()
-                };
-                
-                const data = loadData();
-                data.push(newEntry);
-                saveData(data);
-                
-                minutesInput.value = '0';
-                updateUI();
-                showSection('dashboard');
-            } else {
-                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-        
-        function handleAddSportFormSubmit(e) {
-            e.preventDefault();
-            const newSportNameInput = document.getElementById('new-sport-name');
-            const newSportWeightInput = document.getElementById('new-sport-weight');
-            const sportName = newSportNameInput.value.trim();
-            const sportWeight = parseFloat(newSportWeightInput.value);
-
-            if (sportName && !isNaN(sportWeight) && sportWeight > 0) {
-                const userSports = loadSports();
-                userSports[sportName] = sportWeight;
-                saveSports(userSports);
-                allSports = { ...SPORT_WEIGHTS, ...userSports };
-                
-                renderSportSelect();
-                renderSportWeightList();
-                showDynamicModal("Sportart hinzugefügt", `Die Sportart "${sportName}" wurde erfolgreich erstellt.`, [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                newSportNameInput.value = '';
-                newSportWeightInput.value = '';
-            } else {
-                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-        
-        // --- CRUD-Funktionen für Einträge ---
-        // Übergibt jetzt den Zeitstempel statt des Index
-        function handleDeleteClick(timestamp) {
-            const data = loadData();
-            // Finde den richtigen Eintrag zum Löschen
-            const entryToDelete = data.find(entry => entry.timestamp === timestamp);
-            if (!entryToDelete || entryToDelete.userId !== userId) {
-                showDynamicModal("Fehler", "Sie können nur Ihre eigenen Einträge löschen.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                return;
-            }
-            showDynamicModal(
-                "Eintrag löschen",
-                "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?",
-                [
-                    { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: () => {
-                        // Filtert die Daten nach dem richtigen Zeitstempel
-                        const updatedData = data.filter(entry => entry.timestamp !== timestamp);
-                        saveData(updatedData);
-                        updateUI();
-                        modal.classList.add('hidden');
-                    }},
-                    { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
-                ]
-            );
-        }
-
-        // Übergibt jetzt den Zeitstempel statt des Index
-        function handleEditClick(timestamp) {
-            editingTimestamp = timestamp;
-            updateUI();
-        }
-
-        // Übergibt jetzt den Zeitstempel statt des Index
-        function handleSaveEdit(timestamp) {
-            const data = loadData();
-            // Finde den Eintrag zum Bearbeiten anhand seines eindeutigen Zeitstempels
-            const entryToEdit = data.find(entry => entry.timestamp === timestamp);
-
-            // Fügt eine Schutzbedingung hinzu, um den TypeError zu verhindern
-            if (!entryToEdit) {
-                showDynamicModal("Fehler beim Speichern", "Der zu bearbeitende Eintrag konnte nicht gefunden werden. Er wurde möglicherweise bereits gelöscht oder synchronisiert.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                editingTimestamp = null; // Setze den Bearbeitungsmodus zurück
-                updateUI();
-                return;
-            }
-
-            const editedSport = document.getElementById('edit-sport-select').value;
-            const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
-            const editedDate = document.getElementById('edit-date-input').value;
-
-            if (editedMinutes > 0 && editedDate) {
-                entryToEdit.sport = editedSport;
-                entryToEdit.minutes = editedMinutes;
-                entryToEdit.timestamp = new Date(editedDate).toISOString();
-                
-                saveData(data);
-                editingTimestamp = null;
-                updateUI();
-            } else {
-                showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-            }
-        }
-
-        function handleCancelEdit() {
-            editingTimestamp = null;
-            updateUI();
-        }
-
-        // =====================================
-        // Daten-Sync-Funktionen
-        // =====================================
-        /** Generiert Beispieldaten für Max und Lisa im Local Storage. */
-        function generateDummyData() {
-            const now = new Date();
-            const dummyData = [
-                { userId: 'max_id', nickname: 'Max', sport: 'Laufen', minutes: 60, timestamp: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString() },
-                { userId: 'max_id', nickname: 'Max', sport: 'Krafttraining', minutes: 45, timestamp: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString() },
-                { userId: 'max_id', nickname: 'Max', sport: 'Schwimmen', minutes: 30, timestamp: now.toISOString() },
-                { userId: 'max_id', nickname: 'Max', sport: 'Wandern', minutes: 120, timestamp: now.toISOString() },
-                { userId: 'lisa_id', nickname: 'Lisa', sport: 'Yoga', minutes: 90, timestamp: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString() },
-                { userId: 'lisa_id', nickname: 'Lisa', sport: 'Radfahren', minutes: 180, timestamp: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString() },
-                { userId: 'lisa_id', nickname: 'Lisa', sport: 'Fußball', minutes: 75, timestamp: now.toISOString() }
-            ];
-            
-            saveData(dummyData);
-            updateUI();
-        }
-
-        /** Zeigt das Modal-Fenster für Daten-Sync an. */
-        function showDataSyncModal() {
-            const isShareAvailable = navigator.canShare && navigator.canShare({ files: [new File([], 'test.json', { type: 'application/json' })] });
-
-            modal.classList.remove('hidden');
-            const modalContent = `
-                <div class="p-6">
-                    <h3 class="text-xl font-bold text-primary mb-4">Daten Sync & Verwaltung</h3>
-                    <p id="sync-message" class="text-slate-300 mb-4">Hier kannst du deine lokalen Daten sichern, wiederherstellen oder verwalten.</p>
-                    <div class="space-y-4">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <button id="export-file-btn" class="w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors">
-                                <span class="flex items-center justify-center space-x-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-                                        <path fill-rule="evenodd" d="M12 2.25a.75.75 0 01.75.75v11.69l3.44-3.44a.75.75 0 111.06 1.06l-4.75 4.75a.75.75 0 01-1.06 0l-4.75-4.75a.75.75 0 011.06-1.06l3.44 3.44V3a.75.75 0 01.75-.75zM17.25 18a.75.75 0 010 1.5H6.75a.75.75 0 010-1.5h10.5z" clip-rule="evenodd" />
-                                    </svg>
-                                    <span>Exportieren</span>
-                                </span>
-                            </button>
-                            <button id="share-data-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors ${!isShareAvailable ? 'hidden' : ''}">
-                                <span class="flex items-center justify-center space-x-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-                                        <path fill-rule="evenodd" d="M15.75 4.5a3 3 0 11.825 2.572 2.542 2.542 0 01-.825 3.016V12a.75.75 0 001.5 0v-1.912a4.05 4.05 0 001.89-1.396A3 3 0 1115.75 4.5zM18 18a3 3 0 11-5.69 1.341c-.675-.152-1.385-.295-2.1-.42V4.5a3 3 0 11.825-2.288 4.05 4.05 0 00-1.89 1.396V12a.75.75 0 001.5 0v-.855c.715.125 1.425.268 2.1.42A3 3 0 1118 18zM3.75 6.75a3 3 0 116 0 3 3 0 01-6 0z" clip-rule="evenodd" />
-                                    </svg>
-                                    <span>Teilen</span>
-                                </span>
-                            </button>
-                        </div>
-
-                        <div id="import-section">
-                            <label class="block text-slate-300 mb-2">Daten importieren</label>
-                            <div class="flex flex-col gap-2">
-                                <input type="file" id="import-file-input" accept=".json" class="w-full text-sm text-slate-500
-                                    file:mr-4 file:py-2 file:px-4
-                                    file:rounded-lg file:border-0
-                                    file:text-sm file:font-semibold
-                                    file:bg-slate-600 file:text-white
-                                    hover:file:bg-slate-500
-                                    file:transition-colors
-                                    cursor-pointer"
-                                >
-                                <button id="import-file-btn" class="bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50" disabled>
-                                    Importieren (aus Datei)
-                                </button>
-                            </div>
-                            <div class="mt-4">
-                                <textarea id="import-text-area" rows="4" class="w-full p-2 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Füge hier deinen JSON-Text ein"></textarea>
-                                <button id="import-text-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors mt-2 disabled:opacity-50" disabled>
-                                    Importieren (aus Text)
-                                </button>
-                            </div>
-                        </div>
-
-                        <button id="generate-dummy-data-btn" class="w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors">Beispieldaten erstellen</button>
-                        <button id="clear-data-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Alle Daten löschen</button>
-                    </div>
-                    <button id="modal-close-btn-sync" class="w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors mt-6">Schließen</button>
-                </div>
-            `;
-            modalContentWrapper.innerHTML = modalContent;
-
-            const exportFileBtn = document.getElementById('export-file-btn');
-            const shareDataBtn = document.getElementById('share-data-btn');
-            const importFileInput = document.getElementById('import-file-input');
-            const importFileBtn = document.getElementById('import-file-btn');
-            const importTextArea = document.getElementById('import-text-area');
-            const importTextBtn = document.getElementById('import-text-btn');
-            const syncModalCloseBtn = document.getElementById('modal-close-btn-sync');
-
-            exportFileBtn.addEventListener('click', () => {
-                exportData();
-                document.getElementById('sync-message').textContent = 'Deine Daten wurden als JSON-Datei heruntergeladen.';
-            });
-            
-            shareDataBtn.addEventListener('click', () => {
-                shareData();
-            });
-
-            importFileInput.addEventListener('change', () => {
-                importFileBtn.disabled = !importFileInput.files.length;
-            });
-            importFileBtn.addEventListener('click', () => {
-                const file = importFileInput.files[0];
-                if (file) importFile(file);
-            });
-
-            importTextArea.addEventListener('input', () => {
-                importTextBtn.disabled = importTextArea.value.trim().length === 0;
-            });
-            importTextBtn.addEventListener('click', () => {
-                const jsonText = importTextArea.value;
-                importFromText(jsonText);
-            });
-
-            document.getElementById('generate-dummy-data-btn')?.addEventListener('click', () => {
-                generateDummyData();
-                document.getElementById('sync-message').textContent = 'Beispieldaten wurden erfolgreich erstellt.';
-                updateUI();
-            });
-            document.getElementById('clear-data-btn')?.addEventListener('click', () => {
-                showDynamicModal(
-                    "Daten löschen",
-                    "Möchten Sie wirklich alle Daten unwiderruflich löschen?",
-                    [
-                        { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: () => {
-                            localStorage.removeItem('sportEntries');
-                            localStorage.removeItem('userDefinedSports');
-                            localStorage.removeItem('userId');
-                            localStorage.removeItem('nickname');
-                            window.location.reload();
-                        }},
-                        { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
-                    ]
-                );
-            });
-            syncModalCloseBtn.addEventListener('click', () => modal.classList.add('hidden'));
-        }
-        
-        // =====================================
-        // App-Initialisierung
-        // =====================================
-        /** Initialisiert die App, basierend auf dem Anmeldestatus des Benutzers. */
-        function initializeApp() {
-            userId = localStorage.getItem('userId');
-            currentUser = localStorage.getItem('nickname');
-
-            if (userId && currentUser) {
-                displayedUserId = userId;
-                renderApp();
-            } else {
-                renderNicknameForm();
-            }
-        }
-        
-        document.addEventListener('DOMContentLoaded', initializeApp);
-    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sport Challenge App</title>
+    <!-- Tailwind CSS CDN für das Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Konfiguration für Tailwind CSS -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6', // Blau
+                        secondary: '#ef4444', // Rot
+                        accent: '#22c55e', // Grün
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1f2937 0%, #0f172a 100%);
+            color: #f3f4f6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card {
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .progress-bar-fill {
+            transition: width 0.5s ease-in-out;
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-slow {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+        .toast-container {
+            position: fixed;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            color: white;
+            opacity: 0;
+            animation: fadeinout 4s forwards;
+            min-width: 250px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .toast-success { background-color: #22c55e; }
+        .toast-error { background-color: #ef4444; }
+        .toast-info { background-color: #3b82f6; }
+        @keyframes fadeinout {
+            0% { opacity: 0; transform: translateY(20px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+    </style>
+
+    <!-- Firebase JS SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        (async function() {
+            // =====================================
+            // Globale Variablen und UI-Elemente
+            // =====================================
+            const SPORT_WEIGHTS = {
+                'Laufen': 1.5,
+                'Schwimmen': 1.8,
+                'Radfahren': 1.2,
+                'Krafttraining': 1.3,
+                'Yoga': 0.8,
+                'Wandern': 0.9,
+                'Step Aerobic': 1.6,
+                'HIIT': 1.7,
+                'Kayaking': 1.1,
+                'Andere': 1.0
+            };
+            const GOAL_MINUTES = 8000;
+            
+            const appContainer = document.getElementById('app-container');
+            const modal = document.getElementById('message-modal');
+            const modalContentWrapper = document.getElementById('modal-content-wrapper');
+            const toastContainer = document.getElementById('toast-container');
+            
+            let userId;
+            let currentUser;
+            let displayedUserId;
+            let myProgressView = 'minutes';
+            let chartTimeframe = 'week';
+            let allSports = { ...SPORT_WEIGHTS };
+            let editingDocId = null;
+            let isAppReady = false;
+
+            // Speichert die aktuell geladenen Daten
+            let entries = [];
+            let leaderboardParticipants = [];
+
+            // =====================================
+            // Firebase Konfiguration und Initialisierung
+            // =====================================
+            const firebaseConfigFromStorage = localStorage.getItem('firebaseConfig');
+            const firebaseConfig = firebaseConfigFromStorage 
+                ? JSON.parse(firebaseConfigFromStorage) 
+                : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {});
+            
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : '';
+            
+            let app = null;
+            let auth = null;
+            let db = null;
+            
+            if (firebaseConfig.projectId) {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+            }
+
+            /** Zeigt das Modal zur Eingabe der Firebase-Konfiguration an */
+            function showConfigModal() {
+                modalContentWrapper.innerHTML = `
+                    <div class="p-6">
+                        <h3 class="text-xl font-bold text-primary mb-4">Firebase Konfiguration</h3>
+                        <p class="text-slate-300 mb-4">Bitte geben Sie Ihre Firebase-Konfiguration als JSON ein, um fortzufahren.</p>
+                        <textarea id="config-input" rows="10" class="w-full p-2 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="{
+  &quot;apiKey&quot;: &quot;...&quot;,
+  &quot;authDomain&quot;: &quot;...&quot;,
+  &quot;projectId&quot;: &quot;...&quot;,
+  &quot;storageBucket&quot;: &quot;...&quot;,
+  &quot;messagingSenderId&quot;: &quot;...&quot;,
+  &quot;appId&quot;: &quot;...&quot;
+}"></textarea>
+                        <button id="save-config-btn" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors mt-4">Speichern und neu laden</button>
+                        <div id="config-error" class="text-secondary text-sm mt-2 hidden"></div>
+                    </div>
+                `;
+                modal.classList.remove('hidden');
+
+                document.getElementById('save-config-btn').addEventListener('click', () => {
+                    const configInput = document.getElementById('config-input').value;
+                    const errorEl = document.getElementById('config-error');
+                    try {
+                        const parsedConfig = JSON.parse(configInput);
+                        localStorage.setItem('firebaseConfig', JSON.stringify(parsedConfig));
+                        window.location.reload();
+                    } catch (e) {
+                        errorEl.textContent = 'Ungültiges JSON-Format. Bitte überprüfen Sie Ihre Eingabe.';
+                        errorEl.classList.remove('hidden');
+                    }
+                });
+            }
+            
+            /** Zeigt eine Toast-Benachrichtigung an */
+            function showToast(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = message;
+                toastContainer.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.remove();
+                }, 4000);
+            }
+
+            // =====================================
+            // Firebase-Datenbank-Funktionen
+            // =====================================
+
+            /**
+             * Ruft die Sporteinträge eines Benutzers aus Firestore ab.
+             * @param {string} uid - Die Benutzer-ID.
+             */
+            async function getSportEntries(uid) {
+                if (!db) {
+                    console.error("Firestore-Instanz ist nicht verfügbar.");
+                    return [];
+                }
+                const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
+                const q = query(collection(db, privateEntriesPath));
+                const querySnapshot = await getDocs(q);
+                const entries = [];
+                querySnapshot.forEach(doc => {
+                    entries.push({ id: doc.id, ...doc.data() });
+                });
+                return entries;
+            }
+
+            /**
+             * Fügt einen neuen Sporteintrag in Firestore hinzu.
+             * @param {object} entry - Das hinzuzufügende Datenobjekt.
+             */
+            async function addSportEntry(entry) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    await addDoc(collection(db, privateEntriesPath), entry);
+                    await updateLeaderboardStats(userId, currentUser);
+                    showToast("Sporteintrag hinzugefügt!", "success");
+                    await loadAllData();
+                } catch (e) {
+                    console.error("Fehler beim Hinzufügen des Dokuments: ", e);
+                    showToast("Fehler beim Hinzufügen des Eintrags.", "error");
+                }
+            }
+
+            /**
+             * Löscht einen Sporteintrag aus Firestore.
+             * @param {string} docId - Die ID des zu löschenden Dokuments.
+             */
+            async function deleteSportEntry(docId) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    await deleteDoc(doc(db, privateEntriesPath, docId));
+                    await updateLeaderboardStats(userId, currentUser);
+                    showToast("Eintrag gelöscht.", "info");
+                    await loadAllData();
+                } catch (e) {
+                    console.error("Fehler beim Löschen des Dokuments: ", e);
+                    showToast("Fehler beim Löschen des Eintrags.", "error");
+                }
+            }
+            
+            /**
+             * Aktualisiert einen bestehenden Sporteintrag in Firestore.
+             * @param {string} docId - Die ID des zu aktualisierenden Dokuments.
+             * @param {object} newEntry - Die aktualisierten Daten.
+             */
+            async function updateSportEntry(docId, newEntry) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    await updateDoc(doc(db, privateEntriesPath, docId), newEntry);
+                    await updateLeaderboardStats(userId, currentUser);
+                    showToast("Eintrag aktualisiert.", "success");
+                    await loadAllData();
+                } catch (e) {
+                    console.error("Fehler beim Aktualisieren des Dokuments: ", e);
+                    showToast("Fehler beim Aktualisieren des Eintrags.", "error");
+                }
+            }
+
+            /**
+             * Ruft benutzerdefinierte Sportarten aus Firestore ab.
+             * @param {string} uid - Die Benutzer-ID.
+             */
+            async function getUserDefinedSports(uid) {
+                if (!db) {
+                    console.error("Firestore-Instanz ist nicht verfügbar.");
+                    return SPORT_WEIGHTS;
+                }
+                const privateSportsPath = `/artifacts/${appId}/users/${uid}/userDefinedSports/sportsDoc`;
+                const docRef = doc(db, privateSportsPath);
+                const docSnap = await getDoc(docRef);
+                return docSnap.exists() ? docSnap.data().sports : {};
+            }
+
+            /**
+             * Speichert benutzerdefinierte Sportarten in Firestore.
+             * @param {object} sports - Das Objekt mit Sportarten und Gewichtungen.
+             */
+            async function saveUserDefinedSports(sports) {
+                if (!db) return;
+                try {
+                    const privateSportsPath = `/artifacts/${appId}/users/${userId}/userDefinedSports/sportsDoc`;
+                    await setDoc(doc(db, privateSportsPath), { sports });
+                } catch (e) {
+                    console.error("Fehler beim Speichern der Sportarten: ", e);
+                }
+            }
+
+            /**
+             * Ruft die Leaderboard-Daten aus Firestore ab.
+             */
+            async function getLeaderboard() {
+                if (!db) {
+                    console.error("Firestore-Instanz ist nicht verfügbar.");
+                    return [];
+                }
+                const publicLeaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
+                const q = query(collection(db, publicLeaderboardPath));
+                const querySnapshot = await getDocs(q);
+                const participants = [];
+                querySnapshot.forEach(doc => {
+                    participants.push({ id: doc.id, ...doc.data() });
+                });
+                return participants;
+            }
+
+            /**
+             * Aktualisiert die Statistiken eines Benutzers im öffentlichen Leaderboard.
+             * @param {string} uid - Die Benutzer-ID.
+             * @param {string} nickname - Der Spitzname des Benutzers.
+             */
+            async function updateLeaderboardStats(uid, nickname) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
+                    const q = query(collection(db, privateEntriesPath));
+                    const querySnapshot = await getDocs(q);
+
+                    let totalMinutes = 0;
+                    let totalWeightedMinutes = 0;
+                    const sportsData = allSports;
+
+                    querySnapshot.forEach(doc => {
+                        const entry = doc.data();
+                        const weight = sportsData[entry.sport] || 1.0;
+                        totalMinutes += entry.minutes;
+                        totalWeightedMinutes += entry.minutes * weight;
+                    });
+
+                    const publicDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, uid);
+                    await setDoc(publicDocRef, {
+                        nickname: nickname,
+                        minutes: totalMinutes,
+                        weightedMinutes: totalWeightedMinutes,
+                        lastUpdated: new Date()
+                    }, { merge: true });
+
+                } catch (e) {
+                    console.error("Fehler beim Aktualisieren des Leaderboards:", e);
+                }
+            }
+            
+            /** Lädt alle notwendigen Daten aus der DB und aktualisiert die UI */
+            async function loadAllData() {
+                try {
+                    appContainer.innerHTML = `<p class="text-center text-slate-400">Lade App-Daten...</p>`;
+                    entries = await getSportEntries(userId);
+                    allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(userId)) };
+                    leaderboardParticipants = await getLeaderboard();
+                    
+                    renderApp();
+                } catch (error) {
+                    console.error("Fehler beim Laden der App-Daten: ", error);
+                    showDynamicModal("Fehler", "Daten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+
+
+            // =====================================
+            // UI Rendering und Update Funktionen
+            // =====================================
+
+            /**
+             * Zeigt ein dynamisches modales Fenster mit anpassbarem Titel, Nachricht und Buttons an.
+             * @param {string} title - Der Titel des Modals.
+             * @param {string} message - Die Nachricht des Modals.
+             * @param {Array<Object>} buttons - Ein Array von Button-Konfigurationsobjekten.
+             */
+            function showDynamicModal(title, message, buttons) {
+                modalContentWrapper.innerHTML = `
+                    <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
+                    <p class="text-slate-300 mb-4">${message}</p>
+                    <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
+                `;
+                modal.classList.remove('hidden');
+
+                const buttonContainer = document.getElementById('modal-buttons');
+                buttons.forEach(btnConfig => {
+                    const button = document.createElement('button');
+                    button.id = btnConfig.id;
+                    button.textContent = btnConfig.text;
+                    button.className = btnConfig.class;
+                    button.addEventListener('click', btnConfig.onClick);
+                    buttonContainer.appendChild(button);
+                });
+            }
+            
+            /** Rendert das Anmeldeformular für den Spitznamen. */
+            function renderNicknameForm() {
+                appContainer.innerHTML = `
+                    <div class="text-center p-6 bg-slate-700 rounded-xl">
+                        <h2 class="text-2xl font-semibold mb-4 text-white">Willkommen!</h2>
+                        <p class="text-slate-300 mb-4">Geben Sie Ihren Spitznamen ein, um zu beginnen.</p>
+                        <form id="nickname-form" class="space-y-4">
+                            <input type="text" id="nickname-input" placeholder="Ihr Spitzname" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                            <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Starten</button>
+                        </form>
+                    </div>
+                `;
+                const nicknameForm = document.getElementById('nickname-form');
+                const nicknameInput = document.getElementById('nickname-input');
+                nicknameForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const nickname = nicknameInput.value.trim();
+                    if (nickname) {
+                        currentUser = nickname;
+                        await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { nickname: currentUser }, { merge: true });
+                        await loadAllData();
+                        isAppReady = true;
+                        renderApp();
+                    } else {
+                        showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    }
+                });
+            }
+
+            /** Rendert die Haupt-App. */
+            function renderApp() {
+                appContainer.innerHTML = `
+                    <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
+                        <!-- Navigationsleiste -->
+                        <nav class="bg-slate-700 rounded-xl p-2 flex flex-col sm:flex-row justify-start gap-2">
+                            <button data-section="dashboard" class="nav-button bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Dashboard</button>
+                            <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sportart eintragen</button>
+                            <button data-section="add-sport" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
+                        </nav>
+                        <!-- Abschnitt für das Dashboard -->
+                        <div id="dashboard-section" class="space-y-6">
+                            <!-- Teilnehmer Abschnitt -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Teilnehmer</h2>
+                                <div id="leaderboard" class="space-y-4">
+                                    <!-- Die Rangliste wird hier geladen -->
+                                </div>
+                            </div>
+                            <!-- Fortschritt Abschnitt -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h2 class="text-2xl font-bold text-white">Fortschritt</h2>
+                                </div>
+                                <div class="flex items-center justify-between mb-2 text-sm text-slate-300">
+                                    <span id="my-progress-label">Gesammelte Minuten</span>
+                                    <span id="my-progress-value">0</span>
+                                </div>
+                                <div class="flex justify-center mb-4">
+                                    <button id="toggle-progress-btn" class="text-sm text-slate-400 py-1 px-3 rounded-full border border-slate-600 hover:bg-slate-600 transition-colors">
+                                        Umschalten
+                                    </button>
+                                </div>
+                                
+                                <!-- Fortschrittsbalken -->
+                                <div class="h-6 bg-slate-800 rounded-full overflow-hidden mb-4 shadow-inner">
+                                    <div id="progress-bar" class="h-full bg-accent progress-bar-fill rounded-full" style="width: 0%;"></div>
+                                </div>
+                                <p id="progress-text" class="text-center text-sm font-semibold text-slate-400"></p>
+                                
+                                <div class="mt-8">
+                                    <h3 class="text-lg font-bold text-white mb-2">Aktivität</h3>
+                                    <div class="flex justify-center gap-2 mb-4">
+                                        <button data-timeframe="week" class="timeframe-btn bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
+                                        <button data-timeframe="month" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
+                                        <button data-timeframe="year" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
+                                    </div>
+                                    <canvas id="weekly-chart" class="w-full h-48"></canvas>
+                                </div>
+                            </div>
+                            <!-- Minuten pro Sportart Auswertung -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
+                                <div id="sport-summary-list" class="space-y-2">
+                                    <!-- Der Inhalt wird hier geladen -->
+                                </div>
+                            </div>
+                            <!-- Letzte Aktivitäten Abschnitt -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
+                                <div id="recent-activities" class="space-y-4">
+                                    <!-- Die Aktivitäten werden hier geladen -->
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Abschnitt zum Eintragen von Sport -->
+                        <div id="add-entry-section" class="hidden">
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Sportart hinzufügen</h2>
+                                <form id="add-entry-form" class="space-y-4">
+                                    <div>
+                                        <label for="sport-select" class="block text-slate-300 font-semibold mb-1">Sportart</label>
+                                        <select id="sport-select" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                            <!-- Sportarten werden hier dynamisch geladen -->
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
+                                        <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                    <div>
+                                        <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
+                                        <input type="number" id="minutes-input" value="0" min="0" class="w-full p-3 rounded-lg bg-slate-800 text-white text-center text-lg font-bold border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                        <div class="mt-2 grid grid-cols-3 gap-2">
+                                            <button type="button" data-minutes="5" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
+                                            <button type="button" data-minutes="10" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
+                                            <button type="button" data-minutes="15" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
+                                            <button type="button" data-minutes="30" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
+                                            <button type="button" data-minutes="60" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
+                                            <button type="button" id="clear-minutes-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Eintrag hinzufügen</button>
+                                </form>
+                            </div>
+                        </div>
+                        <!-- Abschnitt zum Hinzufügen eigener Sportarten -->
+                        <div id="add-sport-section" class="hidden">
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Eigene Sportart hinzufügen</h2>
+                                <form id="add-sport-form" class="space-y-4">
+                                    <div>
+                                        <label for="new-sport-name" class="block text-slate-300 font-semibold mb-1">Name der Sportart</label>
+                                        <input type="text" id="new-sport-name" placeholder="z.B. Boxen" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                    <div>
+                                        <label for="new-sport-weight" class="block text-slate-300 font-semibold mb-1">Gewichtung (z.B. 1.5)</label>
+                                        <input type="number" step="0.1" id="new-sport-weight" placeholder="z.B. 1.5" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                    <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sportart hinzufügen</button>
+                                </form>
+                                <div class="mt-8">
+                                    <h3 class="text-lg font-bold text-white mb-2">Aktuelle Sportarten und Gewichtungen </h3>
+                                    <div id="sport-weight-list" class="space-y-2">
+                                        <!-- Die Liste wird hier geladen -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                const dateInput = document.getElementById('date-input');
+                const today = new Date().toISOString().split('T')[0];
+                dateInput.value = today;
+
+                setupEventListeners();
+                renderDashboard();
+            }
+
+            /**
+             * Zeigt einen bestimmten Abschnitt an und verbirgt die anderen.
+             * @param {string} sectionId - Die ID des anzuzeigenden Abschnitts.
+             */
+            function showSection(sectionId) {
+                document.querySelectorAll('.nav-button').forEach(btn => {
+                    const isSelected = btn.dataset.section === sectionId;
+                    btn.classList.toggle('bg-primary', isSelected);
+                    btn.classList.toggle('hover:bg-blue-700', isSelected);
+                    btn.classList.toggle('bg-slate-600', !isSelected);
+                    btn.classList.toggle('hover:bg-slate-500', !isSelected);
+                });
+
+                document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
+                document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
+                document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
+
+                if (sectionId === 'dashboard') {
+                    renderDashboard();
+                }
+            }
+
+            /** Rendert das Dashboard mit den aktuellen Daten */
+            function renderDashboard() {
+                // Filtere Einträge basierend auf dem aktuell angezeigten Benutzer
+                const displayedUserEntries = entries.filter(entry => entry.userId === displayedUserId);
+                
+                renderMyProgress(displayedUserEntries);
+                renderSportSummary(displayedUserEntries);
+                renderRecentActivities(displayedUserEntries);
+                renderLeaderboard(leaderboardParticipants);
+                renderSportSelect();
+            }
+            
+            // =====================================
+            // UI Rendering und Update Funktionen (Fortsetzung)
+            // =====================================
+
+            /** Rendert die Sportarten-Dropdown-Liste neu */
+            function renderSportSelect() {
+                const sportSelect = document.getElementById('sport-select');
+                if (sportSelect) {
+                    sportSelect.innerHTML = Object.keys(allSports).map(sport => 
+                        `<option value="${sport}">${sport}</option>`
+                    ).join('');
+                }
+            }
+            
+            /** Rendert die Liste der Sportarten und ihrer Gewichtungen. */
+            function renderSportWeightList() {
+                const sportWeightListEl = document.getElementById('sport-weight-list');
+                if (!sportWeightListEl) return;
+                
+                sportWeightListEl.innerHTML = Object.entries(allSports).map(([sport, weight]) => `
+                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
+                        <span class="text-white font-semibold">${sport}</span>
+                        <span class="text-primary font-bold">Gewichtung: ${weight}</span>
+                    </div>
+                `).join('');
+            }
+
+            /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
+            async function showUserProgress(selectedUserId) {
+                if (selectedUserId === displayedUserId) return;
+                
+                showToast(`Lade Daten für ${leaderboardParticipants.find(p => p.id === selectedUserId)?.nickname || 'den Benutzer'}`, 'info');
+                
+                entries = await getSportEntries(selectedUserId);
+                allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(selectedUserId)) };
+
+                displayedUserId = selectedUserId;
+                renderDashboard();
+            }
+
+            function renderMyProgress(myEntries) {
+                const myProgressLabelEl = document.getElementById('my-progress-label');
+                const myProgressValueEl = document.getElementById('my-progress-value');
+                const progressBarEl = document.getElementById('progress-bar');
+                const progressTextEl = document.getElementById('progress-text');
+
+                if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !myEntries) return;
+
+                const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
+                const totalWeightedMinutes = myEntries.reduce((sum, entry) => {
+                    const weight = allSports[entry.sport] || 1.0;
+                    return sum + (entry.minutes * weight);
+                }, 0);
+
+                let displayValue = (myProgressView === 'minutes') ? totalMinutes : totalWeightedMinutes;
+                let progress = (displayValue / GOAL_MINUTES) * 100;
+                
+                myProgressLabelEl.textContent = (myProgressView === 'minutes') ? 'Gesammelte Minuten' : 'Gewichtete Minuten';
+                myProgressValueEl.textContent = displayValue.toFixed(myProgressView === 'weighted' ? 1 : 0);
+                progressBarEl.style.width = `${Math.min(100, progress)}%`;
+                progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}%`;
+
+                if (progress >= 100) {
+                    progressBarEl.classList.remove('bg-accent');
+                    progressBarEl.classList.add('bg-primary', 'animate-pulse-slow');
+                    progressTextEl.textContent = "Ziel erreicht! Herzlichen Glückwunsch! 🎉";
+                } else {
+                    progressBarEl.classList.remove('bg-primary', 'animate-pulse-slow');
+                    progressBarEl.classList.add('bg-accent');
+                }
+
+                renderWeeklyProgressGraph(myEntries);
+            }
+            
+            function renderWeeklyProgressGraph(myEntries) {
+                const canvas = document.getElementById('weekly-chart');
+                if (!canvas || !myEntries) return;
+
+                const containerWidth = canvas.parentElement.clientWidth;
+                canvas.width = containerWidth;
+                canvas.height = 192;
+
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                let dataPoints = [];
+                let labels = [];
+
+                const now = new Date();
+                // Funktion zum Abrufen des korrekten Datumsobjekts (Firestore Timestamp oder JS Date)
+                const getEntryDate = (entry) => entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
+
+                if (chartTimeframe === 'week') {
+                    const dailyMinutes = new Array(7).fill(0);
+                    const oneWeekAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneWeekAgo)
+                        .forEach(entry => {
+                            const entryDate = getEntryDate(entry);
+                            const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+                            if (diffDays >= 0 && diffDays < 7) dailyMinutes[6 - diffDays] += entry.minutes;
+                        });
+                    dataPoints = dailyMinutes;
+                    for (let i = 6; i >= 0; i--) {
+                        const date = new Date(now);
+                        date.setDate(now.getDate() - i);
+                        labels.push(date.toLocaleDateString('de-DE', { weekday: 'short' }));
+                    }
+                } else if (chartTimeframe === 'month') {
+                    const weeklyMinutes = new Array(4).fill(0);
+                    const oneMonthAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneMonthAgo)
+                        .forEach(entry => {
+                            const entryDate = getEntryDate(entry);
+                            const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+                            const weekIndex = Math.floor(diffDays / 7);
+                            if (weekIndex >= 0 && weekIndex < 4) weeklyMinutes[3 - weekIndex] += entry.minutes;
+                        });
+                    dataPoints = weeklyMinutes;
+                    labels = ['Woche 1', 'Woche 2', 'Woche 3', 'Woche 4'];
+                } else if (chartTimeframe === 'year') {
+                    const monthlyMinutes = new Array(12).fill(0);
+                    const oneYearAgo = now.getTime() - 365 * 24 * 60 * 60 * 1000;
+                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneYearAgo)
+                        .forEach(entry => {
+                            const entryDate = getEntryDate(entry);
+                            const diffMonths = (now.getFullYear() - entryDate.getFullYear()) * 12 + (now.getMonth() - entryDate.getMonth());
+                            if (diffMonths >= 0 && diffMonths < 12) monthlyMinutes[11 - diffMonths] += entry.minutes;
+                        });
+                    dataPoints = monthlyMinutes;
+                    for (let i = 11; i >= 0; i--) {
+                        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                        labels.push(monthDate.toLocaleDateString('de-DE', { month: 'short' }));
+                    }
+                }
+                
+                const maxMinutes = Math.max(...dataPoints, 1);
+                const padding = 30;
+                const chartHeight = canvas.height - 2 * padding;
+                const chartWidth = canvas.width - 2 * padding;
+                const pointSpacing = chartWidth / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
+
+                ctx.beginPath();
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 3;
+                const points = dataPoints.map((value, index) => ({
+                    x: padding + index * pointSpacing,
+                    y: padding + chartHeight - (value / maxMinutes) * chartHeight
+                }));
+                if (points.length > 0) {
+                    ctx.moveTo(points[0].x, points[0].y);
+                    points.forEach(point => ctx.lineTo(point.x, point.y));
+                }
+                ctx.stroke();
+                
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '10px Inter';
+                const yLabels = [0, Math.floor(maxMinutes / 2), maxMinutes];
+                yLabels.forEach(label => {
+                    const y = padding + chartHeight - (label / maxMinutes) * chartHeight;
+                    ctx.fillText(label, padding - 5, y + 4);
+                });
+                
+                points.forEach(point => {
+                    ctx.beginPath();
+                    ctx.fillStyle = '#22c55e';
+                    ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                ctx.fillStyle = '#f3f4f6';
+                ctx.font = '12px Inter';
+                ctx.textAlign = 'center';
+                labels.forEach((label, index) => {
+                    const x = padding + index * pointSpacing;
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.fillText(label, x, canvas.height - 5);
+                    ctx.fillStyle = '#f3f4f6';
+                    ctx.fillText(dataPoints[index], x, points[index].y - 10);
+                });
+            }
+
+            function renderLeaderboard(participants) {
+                const leaderboardEl = document.getElementById('leaderboard');
+                if (!leaderboardEl || !participants) return;
+
+                let sortedParticipants = [...participants];
+                
+                // Sortiere: Aktueller Benutzer zuerst, dann der Rest (wichtig für die Darstellung)
+                const loggedInUser = sortedParticipants.find(p => p.id === userId);
+                sortedParticipants = loggedInUser ? [loggedInUser, ...sortedParticipants.filter(p => p.id !== userId)] : sortedParticipants;
+                
+                const minutesLeader = [...participants].sort((a, b) => b.minutes - a.minutes)[0] || { minutes: -1, id: null };
+                const weightedLeader = [...participants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
+                
+                leaderboardEl.innerHTML = `
+                    <!-- ÄNDERUNG: Verwendung von responsivem Grid anstelle von Flexbox für die Teilnehmerkarten -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${sortedParticipants.map(p => {
+                            const isMinutesLeader = p.id === minutesLeader.id;
+                            const isWeightedLeader = p.id === weightedLeader.id;
+                            const isActiveUser = p.id === displayedUserId;
+                            
+                            return `
+                                <!-- Entferne 'flex-1', da Grid das Layout steuert -->
+                                <div data-user-id="${p.id}" class="p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
+                                    <h3 class="text-xl font-bold mb-2 text-white">
+                                        ${p.nickname}
+                                        ${p.id === userId ? ' (Du)' : ''}
+                                    </h3>
+                                    <div class="space-y-2">
+                                        <div class="p-3 rounded-lg bg-slate-700">
+                                            <div class="text-slate-400 text-sm">Gesammelte Minuten</div>
+                                            <div class="text-2xl font-extrabold ${isMinutesLeader ? 'text-primary' : 'text-white'}">
+                                                ${p.minutes.toFixed(0)}
+                                                ${isMinutesLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
+                                            </div>
+                                        </div>
+                                        <div class="p-3 rounded-lg bg-slate-700">
+                                            <div class="text-slate-400 text-sm">Gewichtete Minuten</div>
+                                            <div class="text-2xl font-extrabold ${isWeightedLeader ? 'text-accent' : 'text-white'}">
+                                                ${p.weightedMinutes.toFixed(1)}
+                                                ${isWeightedLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Die User ID ist entfernt -->
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+
+            function renderSportSummary(myEntries) {
+                const summaryEl = document.getElementById('sport-summary-list');
+                if (!summaryEl || !myEntries) return;
+
+                const sportMinutes = {};
+                myEntries.forEach(entry => {
+                    const sportName = entry.sport;
+                    if (!sportMinutes[sportName]) sportMinutes[sportName] = 0;
+                    sportMinutes[sportName] += entry.minutes;
+                });
+                const sortedSports = Object.keys(sportMinutes).sort((a, b) => sportMinutes[b] - sportMinutes[a]);
+
+                summaryEl.innerHTML = sortedSports.map(sport => `
+                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
+                        <span class="text-white font-semibold">${sport}</span>
+                        <span class="text-primary font-bold">${sportMinutes[sport]} Minuten</span>
+                    </div>
+                `).join('');
+            }
+            
+            function renderRecentActivities(myEntries) {
+                const recentActivitiesEl = document.getElementById('recent-activities');
+                if (!recentActivitiesEl || !myEntries) return;
+                
+                const sortedActivities = myEntries.sort((a, b) => (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) - (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)));
+                
+                recentActivitiesEl.innerHTML = sortedActivities.map(activity => {
+                    const date = activity.timestamp.toDate ? activity.timestamp.toDate() : new Date(activity.timestamp);
+                    const dateString = date.toLocaleDateString('de-DE');
+                    const timeString = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                    const isMyEntry = activity.userId === userId;
+                    
+                    if (isMyEntry && activity.id === editingDocId) {
+                        return `
+                            <div class="flex flex-col p-4 bg-slate-800 rounded-lg border border-primary" data-doc-id="${activity.id}">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-white font-semibold">Eintrag von ${activity.nickname} bearbeiten</span>
+                                    <div class="flex space-x-2">
+                                        <button data-action="save" class="text-xs text-accent hover:text-green-400 transition-colors">Speichern</button>
+                                        <button data-action="cancel" class="text-xs text-secondary hover:text-red-400 transition-colors">Abbrechen</button>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <select id="edit-sport-select" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm">
+                                        ${Object.keys(allSports).map(sport => 
+                                            `<option value="${sport}" ${sport === activity.sport ? 'selected' : ''}>${sport}</option>`
+                                        ).join('')}
+                                    </select>
+                                    <input type="number" id="edit-minutes-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${activity.minutes}" min="1">
+                                    <input type="date" id="edit-date-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]}">
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const actionButtons = isMyEntry ? `
+                            <div class="flex space-x-2">
+                                <button data-action="edit" data-doc-id="${activity.id}" class="text-xs text-slate-400 hover:text-white transition-colors">Bearbeiten</button>
+                                <button data-action="delete" data-doc-id="${activity.id}" class="text-xs text-secondary hover:text-red-400 transition-colors">Löschen</button>
+                            </div>
+                        ` : '';
+                        return `
+                            <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
+                                <div>
+                                    <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Minuten</span>
+                                    <span class="text-accent font-semibold">${activity.sport}</span> gemacht.
+                                </div>
+                                <div class="flex-shrink-0 text-right">
+                                    <span class="text-xs text-slate-500 block mb-1">${dateString} ${timeString}</span>
+                                    ${actionButtons}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }).join('');
+            }
+            
+            // =====================================
+            // Event-Listener Setup
+            // =====================================
+            
+            function setupEventListeners() {
+                document.querySelectorAll('.nav-button').forEach(btn => {
+                    btn.addEventListener('click', () => showSection(btn.dataset.section));
+                });
+
+                document.getElementById('add-entry-form')?.addEventListener('submit', handleFormSubmit);
+                document.getElementById('add-sport-form')?.addEventListener('submit', handleAddSportFormSubmit);
+                document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
+                    myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
+                    renderDashboard();
+                });
+
+                document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        chartTimeframe = btn.dataset.timeframe;
+                        document.querySelectorAll('.timeframe-btn').forEach(b => {
+                            const isSelected = b.dataset.timeframe === chartTimeframe;
+                            b.classList.toggle('bg-primary', isSelected);
+                            b.classList.toggle('hover:bg-blue-700', isSelected);
+                            b.classList.toggle('bg-slate-600', !isSelected);
+                            b.classList.toggle('hover:bg-slate-500', !isSelected);
+                        });
+                        renderDashboard();
+                    });
+                });
+
+                // Event-Delegation für Minuten-Buttons
+                document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
+                    const target = e.target;
+                    const minutesInput = document.getElementById('minutes-input');
+                    if (target.classList.contains('minutes-btn')) {
+                        let currentMinutes = parseInt(minutesInput.value, 10);
+                        currentMinutes += parseInt(target.dataset.minutes, 10);
+                        minutesInput.value = currentMinutes;
+                    } else if (target.id === 'clear-minutes-btn') {
+                        minutesInput.value = '0';
+                    }
+                });
+
+                const sportSelect = document.getElementById('sport-select');
+                if (sportSelect) {
+                    sportSelect.addEventListener('change', () => {
+                        document.getElementById('minutes-input').value = '0';
+                    });
+                }
+
+                // Event-Delegation für die Liste der letzten Aktivitäten
+                document.getElementById('recent-activities')?.addEventListener('click', (e) => {
+                    const target = e.target;
+                    const docId = target.dataset.docId;
+                    const action = target.dataset.action;
+
+                    if (action === 'delete') handleDeleteClick(docId);
+                    else if (action === 'edit') handleEditClick(docId);
+                    else if (action === 'save') handleSaveEdit(docId);
+                    else if (action === 'cancel') handleCancelEdit();
+                });
+
+                // Event-Delegation für die Rangliste
+                document.getElementById('leaderboard')?.addEventListener('click', (e) => {
+                    const target = e.target.closest('[data-user-id]');
+                    if (target) showUserProgress(target.dataset.userId);
+                });
+            }
+            
+            // =====================================
+            // Formular-Handling
+            // =====================================
+            async function handleFormSubmit(e) {
+                e.preventDefault();
+                const sportSelect = document.getElementById('sport-select');
+                const dateInput = document.getElementById('date-input');
+                const minutesInput = document.getElementById('minutes-input');
+                const sport = sportSelect.value;
+                const date = dateInput.value;
+                const minutes = parseInt(minutesInput.value, 10);
+
+                if (minutes > 0 && date && userId && currentUser) {
+                    const newEntry = {
+                        userId: userId,
+                        nickname: currentUser,
+                        sport: sport,
+                        minutes: minutes,
+                        timestamp: new Date(date)
+                    };
+                    
+                    await addSportEntry(newEntry);
+                    
+                    minutesInput.value = '0';
+                    showSection('dashboard');
+                } else {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+            
+            async function handleAddSportFormSubmit(e) {
+                e.preventDefault();
+                const newSportNameInput = document.getElementById('new-sport-name');
+                const newSportWeightInput = document.getElementById('new-sport-weight');
+                const sportName = newSportNameInput.value.trim();
+                const sportWeight = parseFloat(newSportWeightInput.value);
+
+                if (sportName && !isNaN(sportWeight) && sportWeight > 0) {
+                    const userSports = { ...allSports };
+                    userSports[sportName] = sportWeight;
+                    
+                    await saveUserDefinedSports(userSports);
+                    
+                    showToast("Sportart hinzugefügt!", "success");
+                    newSportNameInput.value = '';
+                    newSportWeightInput.value = '';
+                    
+                    await loadAllData();
+                    renderSportWeightList();
+                } else {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+            
+            // --- CRUD-Funktionen für Einträge ---
+            function handleDeleteClick(docId) {
+                showDynamicModal(
+                    "Eintrag löschen",
+                    "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?",
+                    [
+                        { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: async () => {
+                            await deleteSportEntry(docId);
+                            modal.classList.add('hidden');
+                        }},
+                        { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                    ]
+                );
+            }
+
+            function handleEditClick(docId) {
+                editingDocId = docId;
+                renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
+            }
+
+            async function handleSaveEdit(docId) {
+                const editedSport = document.getElementById('edit-sport-select').value;
+                const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
+                const editedDate = document.getElementById('edit-date-input').value;
+                
+                if (editedMinutes > 0 && editedDate) {
+                    const newEntry = {
+                        sport: editedSport,
+                        minutes: editedMinutes,
+                        timestamp: new Date(editedDate),
+                    };
+                    
+                    await updateSportEntry(docId, newEntry);
+                    
+                    editingDocId = null;
+                    renderDashboard();
+                } else {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+
+            function handleCancelEdit() {
+                editingDocId = null;
+                renderDashboard();
+            }
+
+            // =====================================
+            // App-Initialisierung
+            // =====================================
+            async function migrateDataFromLocalStorage(firebaseUid) {
+                appContainer.innerHTML = `<p class="text-center text-slate-400">Migriere lokale Daten...</p>`;
+                
+                const localStorageUserId = localStorage.getItem('userId');
+                const localStorageNickname = localStorage.getItem('nickname');
+                const sportEntriesStr = localStorage.getItem('sportEntries');
+                
+                if (!localStorageUserId || !localStorageNickname || !sportEntriesStr) {
+                    console.warn("Lokalstorage-Daten fehlen. Migration wird übersprungen.");
+                    await checkUserExistsAndLoad();
+                    return;
+                }
+
+                try {
+                    const entriesToMigrate = JSON.parse(sportEntriesStr).filter(entry => 
+                        entry.userId === localStorageUserId && entry.nickname === localStorageNickname
+                    );
+                    
+                    if (entriesToMigrate.length > 0) {
+                        const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
+                        await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
+
+                        const privateEntriesPath = `/artifacts/${appId}/users/${firebaseUid}/sportEntries`;
+                        const batchPromises = entriesToMigrate.map(entry => {
+                            const firestoreEntry = {
+                                ...entry,
+                                userId: firebaseUid,
+                                nickname: localStorageNickname,
+                                timestamp: new Date(entry.timestamp)
+                            };
+                            return addDoc(collection(db, privateEntriesPath), firestoreEntry);
+                        });
+                        await Promise.all(batchPromises);
+
+                        const userDefinedSportsStr = localStorage.getItem('userDefinedSports');
+                        if (userDefinedSportsStr) {
+                            const sports = JSON.parse(userDefinedSportsStr);
+                            const privateSportsPath = `/artifacts/${appId}/users/${firebaseUid}/userDefinedSports/sportsDoc`;
+                            await setDoc(doc(db, privateSportsPath), { sports });
+                        }
+                    
+                        showToast("Lokale Daten erfolgreich migriert!", "success");
+                    } else {
+                         console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
+                    }
+                    
+                    localStorage.removeItem('userId');
+                    localStorage.removeItem('nickname');
+                    localStorage.removeItem('sportEntries');
+                    localStorage.removeItem('userDefinedSports');
+
+                } catch (error) {
+                    console.error("Fehler bei der Migration:", error);
+                    showDynamicModal("Migrationsfehler", "Ein Fehler ist bei der Datenmigration aufgetreten. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+                finally {
+                    await loadAllData();
+                }
+            }
+
+            async function checkUserExistsAndLoad() {
+                const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
+                try {
+                    const userDoc = await getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        currentUser = userDoc.data().nickname;
+                        await loadAllData();
+                        renderApp();
+                    } else {
+                        renderNicknameForm();
+                    }
+                } catch (error) {
+                    console.error("Fehler beim Laden der Benutzerdaten:", error);
+                    showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+            
+            async function startApp() {
+                if (!app) {
+                    showConfigModal();
+                    return;
+                }
+
+                if (!auth || !db) {
+                    console.error("Firebase Auth oder Firestore Instanz nicht initialisiert.");
+                    showDynamicModal("Initialisierungsfehler", "Firebase konnte nicht richtig geladen werden. Überprüfen Sie Ihre Konfiguration.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+                
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error('Authentifizierungsfehler:', error);
+                    showDynamicModal("Authentifizierungsfehler", "Konnte mich nicht anmelden. Bitte überprüfen Sie Ihre Internetverbindung.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+
+                userId = auth.currentUser.uid;
+                displayedUserId = userId;
+
+                const hasLocalData = localStorage.getItem('userId') && localStorage.getItem('sportEntries');
+                if (hasLocalData) {
+                    await migrateDataFromLocalStorage(userId);
+                } else {
+                    await checkUserExistsAndLoad();
+                }
+            }
+
+            startApp();
+        })();
+    </script>
 </head>
 <body class="p-4 sm:p-8">
-    <!-- Hauptcontainer für die gesamte App -->
-    <div class="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-4xl mx-auto border border-slate-700 flex-grow">
-        <h1 class="text-3xl sm:text-4xl font-bold text-center text-primary mb-2">Sport Challenge 2025/26</h1>
-        <p class="text-center text-slate-400 mb-6">Erreiche 8000 Minuten Sport in einem Jahr.</p>
+    <!-- Hauptcontainer für die gesamte App -->
+    <div class="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-4xl mx-auto border border-slate-700 flex-grow">
+        <h1 class="text-3xl sm:text-4xl font-bold text-center text-primary mb-2">Sport Challenge 2025/26</h1>
+        <p class="text-center text-slate-400 mb-6">Erreiche 8000 Minuten Sport in einem Jahr.</p>
 
-        <!-- Container für die Anmeldemaske oder die Haupt-App -->
-        <div id="app-container">
-            <p class="text-center text-slate-400">Lade App-Daten...</p>
-        </div>
-    </div>
+        <!-- Container für die Anmeldemaske oder die Haupt-App -->
+        <div id="app-container">
+            <p class="text-center text-slate-400">Lade App-Daten...</p>
+        </div>
+    </div>
 
-    <!-- Modales Overlay für Warnungen/Meldungen -->
-    <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-        <div id="modal-content-wrapper" class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
-        </div>
-    </div>
+    <!-- Modales Overlay für Warnungen/Meldungen -->
+    <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+        <div id="modal-content-wrapper" class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
+        </div>
+    </div>
 
-    <!-- Footer Navigation -->
-    <footer class="mt-8">
-        <nav>
-            <button id="data-sync-btn" class="text-primary font-semibold py-2 px-4 rounded-lg hover:text-blue-400 transition-colors">Daten Sync</button>
-        </nav>
-    </footer>
+    <!-- Toast Benachrichtigungs-Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Footer Navigation -->
+    <footer class="mt-8">
+    </footer>
 </body>
 </html>
