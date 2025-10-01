@@ -787,6 +787,7 @@
                 const weightedLeader = [...participants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
                 
                 leaderboardEl.innerHTML = `
+
                     <!-- ÄNDERUNG: Verwendung von responsivem Grid anstelle von Flexbox für die Teilnehmerkarten -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         ${sortedParticipants.map(p => {
@@ -795,8 +796,7 @@
                             const isActiveUser = p.id === displayedUserId;
                             
                             return `
-                                <!-- Entferne 'flex-1', da Grid das Layout steuert -->
-                                <div data-user-id="${p.id}" class="p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
+                                <div data-user-id="${p.id}" class="flex-1 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
                                     <h3 class="text-xl font-bold mb-2 text-white">
                                         ${p.nickname}
                                         ${p.id === userId ? ' (Du)' : ''}
@@ -817,7 +817,6 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <!-- Die User ID ist entfernt -->
                                 </div>
                             `;
                         }).join('')}
