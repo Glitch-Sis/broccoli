@@ -369,7 +369,55 @@
                 }
             }
 
+            /**
+             * Holt alle Daten vom alten Profil und speichert sie unter der neuen userId.
+             */
+            async function importProfileData(oldUserId, newNickname) {
+                if (!db || !userId) return showToast("Fehler: Datenbank nicht bereit.", "error");
 
+                try {
+                    // 1. Lade Einträge und Sportarten des alten Benutzers
+                    showToast("Lade alte Profildaten...", "info");
+                    const oldEntries = await getSportEntries(oldUserId);
+                    const oldSports = await getUserDefinedSports(oldUserId);
+                    
+                    // 2. Leaderboard des neuen UIDs aktualisieren (wird mit 0 Minuten überschrieben, aber der Nickname ist korrekt)
+                    const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
+                    await setDoc(doc(db, leaderboardPath, userId), { nickname: newNickname, minutes: 0, weightedMinutes: 0 }, { merge: true });
+                    
+                    // 3. Füge die Sportarten zum neuen UID hinzu
+                    await saveUserDefinedSports(oldSports); 
+                    
+                    // 4. Füge alle alten Einträge dem neuen UID hinzu
+                    showToast("Migriere Einträge...", "info");
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    const batchPromises = oldEntries.map(entry => {
+                        const firestoreEntry = {
+                            ...entry,
+                            userId: userId,
+                            nickname: newNickname,
+                            timestamp: entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp)
+                        };
+                        return addDoc(collection(db, privateEntriesPath), firestoreEntry);
+                    });
+                    await Promise.all(batchPromises);
+                    
+                    // 5. Leaderboard-Statistik des neuen Benutzers aktualisieren
+                    await updateLeaderboardStats(userId, newNickname);
+
+                    showToast("Profil erfolgreich übernommen!", "success");
+                    return true;
+                    
+                } catch (e) {
+                    console.error("Fehler beim Importieren des Profils:", e);
+                    showDynamicModal("Importfehler", "Beim Versuch, das Profil zu übernehmen, ist ein Fehler aufgetreten.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return false;
+                }
+            }
+
+
+            // ... (restliche UI Funktionen)
+            
             // =====================================
             // UI Rendering und Update Funktionen
             // =====================================
@@ -401,24 +449,54 @@
             
             /** Rendert das Anmeldeformular für den Spitznamen. */
             function renderNicknameForm() {
+                // NEUE HTML-Struktur für das Anmeldeformular mit Import-Option
                 appContainer.innerHTML = `
-                    <div class="text-center p-6 bg-slate-700 rounded-xl">
+                    <div class="text-center p-6 bg-slate-700 rounded-xl shadow-2xl space-y-6">
                         <h2 class="text-2xl font-semibold mb-4 text-white">Willkommen!</h2>
-                        <p class="text-slate-300 mb-4">Geben Sie Ihren Spitznamen ein, um zu beginnen.</p>
-                        <form id="nickname-form" class="space-y-4">
-                            <input type="text" id="nickname-input" placeholder="Ihr Spitzname" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                            <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Starten</button>
+                        <p class="text-slate-300">Geben Sie Ihren Spitznamen ein, um ein **neues Profil** zu starten, oder importieren Sie ein bestehendes Profil über die **Profil-ID**.</p>
+                        
+                        <!-- NEUES PROFIL STARTEN -->
+                        <form id="nickname-form" class="space-y-4 border-b border-slate-600 pb-6">
+                            <input type="text" id="nickname-input" placeholder="Neuer Spitzname (z.B. Sportler99)" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-accent" required>
+                            <button type="submit" id="create-profile-btn" class="w-full bg-accent text-white font-semibold py-3 rounded-lg hover:bg-green-600 transition-colors">Neues Profil erstellen</button>
                         </form>
+                        
+                        <!-- PROFIL IMPORTIEREN -->
+                        <div id="import-section" class="space-y-4 pt-4">
+                            <h3 class="text-xl font-bold text-primary">Bestehendes Profil importieren</h3>
+                            <p class="text-slate-400 text-sm">Geben Sie die ID des alten Geräts/Profils (vom Leaderboard) ein, um dessen Daten zu übernehmen. **Achtung: Dies löscht keine alten IDs, aber macht diese Sitzung zur neuen primären Sitzung.**</p>
+                            <input type="text" id="import-id-input" placeholder="Alte Profil-ID (z.B. 1234abc...)" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                            <button type="button" id="import-profile-btn" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Profil importieren & übernehmen</button>
+                            <div id="import-error" class="text-secondary text-sm mt-2 hidden"></div>
+                        </div>
+                        <div class="text-sm text-slate-500 mt-4">Aktuelle Sitzungs-ID: ${userId}</div>
                     </div>
                 `;
                 const nicknameForm = document.getElementById('nickname-form');
                 const nicknameInput = document.getElementById('nickname-input');
+                const importIdInput = document.getElementById('import-id-input');
+                const importProfileBtn = document.getElementById('import-profile-btn');
+                const importErrorEl = document.getElementById('import-error');
+
+                // Handle NEUES PROFIL erstellen
                 nicknameForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const nickname = nicknameInput.value.trim();
                     if (nickname) {
+                        // Check ob Nickname schon existiert, um Konflikte zu vermeiden
+                        const leaderboardSnapshot = await getLeaderboard();
+                        if (leaderboardSnapshot.some(p => p.nickname === nickname)) {
+                            showDynamicModal("Nickname Konflikt", `Der Spitzname "${nickname}" existiert bereits. Bitte verwenden Sie einen anderen Namen oder die Import-Funktion.`, [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                            return;
+                        }
+
                         currentUser = nickname;
-                        await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { nickname: currentUser }, { merge: true });
+                        // Erstellt neuen Eintrag im Leaderboard (startet mit 0 Minuten)
+                        await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { nickname: currentUser, minutes: 0, weightedMinutes: 0, lastUpdated: new Date() });
+                        
+                        // Initialisiere die Standard-Sportarten
+                        await saveUserDefinedSports(SPORT_WEIGHTS);
+
                         await loadAllData();
                         isAppReady = true;
                         renderApp();
@@ -426,7 +504,91 @@
                         showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                     }
                 });
+
+                // Handle PROFIL IMPORTIEREN
+                importProfileBtn.addEventListener('click', async () => {
+                    const oldUserId = importIdInput.value.trim();
+                    
+                    if (oldUserId === userId) {
+                        importErrorEl.textContent = 'Dies ist Ihre aktuelle Sitzungs-ID.';
+                        importErrorEl.classList.remove('hidden');
+                        return;
+                    }
+
+                    if (!oldUserId) {
+                        importErrorEl.textContent = 'Bitte geben Sie eine gültige Profil-ID ein.';
+                        importErrorEl.classList.remove('hidden');
+                        return;
+                    }
+                    
+                    importErrorEl.classList.add('hidden');
+
+                    // Lade das Leaderboard-Dokument der alten ID, um den Nickname zu erhalten
+                    const oldUserDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, oldUserId);
+                    const oldUserDoc = await getDoc(oldUserDocRef);
+                    
+                    if (!oldUserDoc.exists()) {
+                        importErrorEl.textContent = 'Kein Profil mit dieser ID gefunden.';
+                        importErrorEl.classList.remove('hidden');
+                        return;
+                    }
+
+                    const oldNickname = oldUserDoc.data().nickname;
+                    
+                    // Bestätigungsmodal, da Daten von der alten ID zur neuen ID kopiert werden
+                    showDynamicModal(
+                        "Profil übernehmen?",
+                        `Möchten Sie das Profil von **"${oldNickname}"** auf dieses Gerät übernehmen? Dadurch werden alle Aktivitätsdaten und Sportart-Definitionen dieses Profils auf Ihre aktuelle Sitzungs-ID übertragen.`,
+                        [
+                            { id: 'confirm-yes-import-btn', text: 'Ja, Profil übernehmen', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: async () => {
+                                modal.classList.add('hidden');
+                                const success = await importProfileData(oldUserId, oldNickname);
+                                if (success) {
+                                    // Nach erfolgreichem Import muss der neue Benutzer mit den neuen Daten geladen werden
+                                    currentUser = oldNickname;
+                                    await loadAllData();
+                                    isAppReady = true;
+                                    renderApp();
+                                }
+                            }},
+                            { id: 'confirm-no-import-btn', text: 'Abbrechen', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                        ]
+                    );
+                });
             }
+
+            // ... (Rest des Codes bleibt unverändert)
+            
+            // =====================================
+            // UI Rendering und Update Funktionen
+            // =====================================
+
+            /**
+             * Zeigt ein dynamisches modales Fenster mit anpassbarem Titel, Nachricht und Buttons an.
+             * @param {string} title - Der Titel des Modals.
+             * @param {string} message - Die Nachricht des Modals.
+             * @param {Array<Object>} buttons - Ein Array von Button-Konfigurationsobjekten.
+             */
+            function showDynamicModal(title, message, buttons) {
+                modalContentWrapper.innerHTML = `
+                    <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
+                    <p class="text-slate-300 mb-4">${message}</p>
+                    <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
+                `;
+                modal.classList.remove('hidden');
+
+                const buttonContainer = document.getElementById('modal-buttons');
+                buttons.forEach(btnConfig => {
+                    const button = document.createElement('button');
+                    button.id = btnConfig.id;
+                    button.textContent = btnConfig.text;
+                    button.className = btnConfig.class;
+                    button.addEventListener('click', btnConfig.onClick);
+                    buttonContainer.appendChild(button);
+                });
+            }
+            
+            // ... (Fortsetzung der UI-Funktionen)
 
             /** Rendert die Haupt-App. */
             function renderApp() {
@@ -535,18 +697,18 @@
                                     </div>
                                     <div>
                                         <label for="new-sport-weight" class="block text-slate-300 font-semibold mb-1">Gewichtung (z.B. 1.5)</label>
-                                        <input type="number" step="0.1" id="new-sport-weight" placeholder="z.B. 1.5" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                        <input type="number" step="0.1" id="new-sport-weight" placeholder="z.b. 1.5" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
                                     </div>
                                     <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sportart hinzufügen</button>
                                 </form>
                                 <div class="mt-8">
-                                    <h3 class="text-lg font-bold text-white mb-2">Aktuelle Sportarten und Gewichtungen </h3>
+                                    <h3 class="text-lg font-bold text-white mb-2">Aktuelle Sportarten und Gewichtungen</h3>
                                     <div id="sport-weight-list" class="space-y-2">
                                         <!-- Die Liste wird hier geladen -->
                                     </div>
-                                </div>
                             </div>
                         </div>
+                    </div>
                     </div>
                 `;
                 const dateInput = document.getElementById('date-input');
@@ -581,12 +743,9 @@
 
             /** Rendert das Dashboard mit den aktuellen Daten */
             function renderDashboard() {
-                // Filtere Einträge basierend auf dem aktuell angezeigten Benutzer
-                const displayedUserEntries = entries.filter(entry => entry.userId === displayedUserId);
-                
-                renderMyProgress(displayedUserEntries);
-                renderSportSummary(displayedUserEntries);
-                renderRecentActivities(displayedUserEntries);
+                renderMyProgress(entries.filter(entry => entry.userId === displayedUserId));
+                renderSportSummary(entries.filter(entry => entry.userId === displayedUserId));
+                renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
                 renderLeaderboard(leaderboardParticipants);
                 renderSportSelect();
             }
@@ -680,8 +839,7 @@
                 let labels = [];
 
                 const now = new Date();
-                // Funktion zum Abrufen des korrekten Datumsobjekts (Firestore Timestamp oder JS Date)
-                const getEntryDate = (entry) => entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
+                const getEntryDate = (entry) => entry.timestamp instanceof Date ? entry.timestamp : new Date(entry.timestamp.toDate());
 
                 if (chartTimeframe === 'week') {
                     const dailyMinutes = new Array(7).fill(0);
@@ -779,16 +937,14 @@
 
                 let sortedParticipants = [...participants];
                 
-                // Sortiere: Aktueller Benutzer zuerst, dann der Rest (wichtig für die Darstellung)
                 const loggedInUser = sortedParticipants.find(p => p.id === userId);
                 sortedParticipants = loggedInUser ? [loggedInUser, ...sortedParticipants.filter(p => p.id !== userId)] : sortedParticipants;
                 
                 const minutesLeader = [...participants].sort((a, b) => b.minutes - a.minutes)[0] || { minutes: -1, id: null };
                 const weightedLeader = [...participants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
                 
+                // Grid-Layout verwenden, um Probleme mit dem Flex-Wrap zu vermeiden
                 leaderboardEl.innerHTML = `
-
-                    <!-- ÄNDERUNG: Verwendung von responsivem Grid anstelle von Flexbox für die Teilnehmerkarten -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         ${sortedParticipants.map(p => {
                             const isMinutesLeader = p.id === minutesLeader.id;
@@ -796,7 +952,7 @@
                             const isActiveUser = p.id === displayedUserId;
                             
                             return `
-                                <div data-user-id="${p.id}" class="flex-1 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
+                                <div data-user-id="${p.id}" class="p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary scale-[1.03]' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
                                     <h3 class="text-xl font-bold mb-2 text-white">
                                         ${p.nickname}
                                         ${p.id === userId ? ' (Du)' : ''}
@@ -817,6 +973,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <div class="text-sm text-slate-500 mt-2">${p.id}</div>
                                 </div>
                             `;
                         }).join('')}
