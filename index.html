@@ -787,7 +787,9 @@
                 const weightedLeader = [...participants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
                 
                 leaderboardEl.innerHTML = `
-                    <div class="flex flex-col sm:flex-row gap-4">
+
+                    <!-- ÄNDERUNG: Verwendung von responsivem Grid anstelle von Flexbox für die Teilnehmerkarten -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         ${sortedParticipants.map(p => {
                             const isMinutesLeader = p.id === minutesLeader.id;
                             const isWeightedLeader = p.id === weightedLeader.id;
@@ -815,7 +817,6 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <!-- Die User ID wird hier entfernt -->
                                 </div>
                             `;
                         }).join('')}
