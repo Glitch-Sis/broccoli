@@ -161,1025 +161,1189 @@
   &quot;messagingSenderId&quot;: &quot;...&quot;,
   &quot;appId&quot;: &quot;...&quot;
 }"></textarea>
-                        <button id="save-config-btn" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors mt-4">Speichern und neu laden</button>
-                        <div id="config-error" class="text-secondary text-sm mt-2 hidden"></div>
-                    </div>
-                `;
-                modal.classList.remove('hidden');
-
-                document.getElementById('save-config-btn').addEventListener('click', () => {
-                    const configInput = document.getElementById('config-input').value;
-                    const errorEl = document.getElementById('config-error');
-                    try {
-                        const parsedConfig = JSON.parse(configInput);
-                        localStorage.setItem('firebaseConfig', JSON.stringify(parsedConfig));
-                        window.location.reload();
-                    } catch (e) {
-                        errorEl.textContent = 'Ungültiges JSON-Format. Bitte überprüfen Sie Ihre Eingabe.';
-                        errorEl.classList.remove('hidden');
-                    }
-                });
-            }
-            
-            /** Zeigt eine Toast-Benachrichtigung an */
-            function showToast(message, type = 'info') {
-                const toast = document.createElement('div');
-                toast.className = `toast toast-${type}`;
-                toast.textContent = message;
-                toastContainer.appendChild(toast);
-
-                setTimeout(() => {
-                    toast.remove();
-                }, 4000);
-            }
-
-            // =====================================
-            // Firebase-Datenbank-Funktionen
-            // =====================================
-
-            /**
-             * Ruft die Sporteinträge eines Benutzers aus Firestore ab.
-             * @param {string} uid - Die Benutzer-ID.
-             */
-            async function getSportEntries(uid) {
-                if (!db) {
-                    console.error("Firestore-Instanz ist nicht verfügbar.");
-                    return [];
-                }
-                const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
-                const q = query(collection(db, privateEntriesPath));
-                const querySnapshot = await getDocs(q);
-                const entries = [];
-                querySnapshot.forEach(doc => {
-                    entries.push({ id: doc.id, ...doc.data() });
-                });
-                return entries;
-            }
-
-            /**
-             * Fügt einen neuen Sporteintrag in Firestore hinzu.
-             * @param {object} entry - Das hinzuzufügende Datenobjekt.
-             */
-            async function addSportEntry(entry) {
-                if (!db) return;
-                try {
-                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
-                    await addDoc(collection(db, privateEntriesPath), entry);
-                    await updateLeaderboardStats(userId, currentUser);
-                    showToast("Sporteintrag hinzugefügt!", "success");
-                    await loadAllData();
-                } catch (e) {
-                    console.error("Fehler beim Hinzufügen des Dokuments: ", e);
-                    showToast("Fehler beim Hinzufügen des Eintrags.", "error");
-                }
-            }
-
-            /**
-             * Löscht einen Sporteintrag aus Firestore.
-             * @param {string} docId - Die ID des zu löschenden Dokuments.
-             */
-            async function deleteSportEntry(docId) {
-                if (!db) return;
-                try {
-                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
-                    await deleteDoc(doc(db, privateEntriesPath, docId));
-                    await updateLeaderboardStats(userId, currentUser);
-                    showToast("Eintrag gelöscht.", "info");
-                    await loadAllData();
-                } catch (e) {
-                    console.error("Fehler beim Löschen des Dokuments: ", e);
-                    showToast("Fehler beim Löschen des Eintrags.", "error");
-                }
-            }
-            
-            /**
-             * Aktualisiert einen bestehenden Sporteintrag in Firestore.
-             * @param {string} docId - Die ID des zu aktualisierenden Dokuments.
-             * @param {object} newEntry - Die aktualisierten Daten.
-             */
-            async function updateSportEntry(docId, newEntry) {
-                if (!db) return;
-                try {
-                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
-                    await updateDoc(doc(db, privateEntriesPath, docId), newEntry);
-                    await updateLeaderboardStats(userId, currentUser);
-                    showToast("Eintrag aktualisiert.", "success");
-                    await loadAllData();
-                } catch (e) {
-                    console.error("Fehler beim Aktualisieren des Dokuments: ", e);
-                    showToast("Fehler beim Aktualisieren des Eintrags.", "error");
-                }
-            }
-
-            /**
-             * Ruft benutzerdefinierte Sportarten aus Firestore ab.
-             * @param {string} uid - Die Benutzer-ID.
-             */
-            async function getUserDefinedSports(uid) {
-                if (!db) {
-                    console.error("Firestore-Instanz ist nicht verfügbar.");
-                    return SPORT_WEIGHTS;
-                }
-                const privateSportsPath = `/artifacts/${appId}/users/${uid}/userDefinedSports/sportsDoc`;
-                const docRef = doc(db, privateSportsPath);
-                const docSnap = await getDoc(docRef);
-                return docSnap.exists() ? docSnap.data().sports : {};
-            }
-
-            /**
-             * Speichert benutzerdefinierte Sportarten in Firestore.
-             * @param {object} sports - Das Objekt mit Sportarten und Gewichtungen.
-             */
-            async function saveUserDefinedSports(sports) {
-                if (!db) return;
-                try {
-                    const privateSportsPath = `/artifacts/${appId}/users/${userId}/userDefinedSports/sportsDoc`;
-                    await setDoc(doc(db, privateSportsPath), { sports });
-                } catch (e) {
-                    console.error("Fehler beim Speichern der Sportarten: ", e);
-                }
-            }
-
-            /**
-             * Ruft die Leaderboard-Daten aus Firestore ab.
-             */
-            async function getLeaderboard() {
-                if (!db) {
-                    console.error("Firestore-Instanz ist nicht verfügbar.");
-                    return [];
-                }
-                const publicLeaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
-                const q = query(collection(db, publicLeaderboardPath));
-                const querySnapshot = await getDocs(q);
-                const participants = [];
-                querySnapshot.forEach(doc => {
-                    participants.push({ id: doc.id, ...doc.data() });
-                });
-                return participants;
-            }
-
-            /**
-             * Aktualisiert die Statistiken eines Benutzers im öffentlichen Leaderboard.
-             * @param {string} uid - Die Benutzer-ID.
-             * @param {string} nickname - Der Spitzname des Benutzers.
-             */
-            async function updateLeaderboardStats(uid, nickname) {
-                if (!db) return;
-                try {
-                    const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
-                    const q = query(collection(db, privateEntriesPath));
-                    const querySnapshot = await getDocs(q);
-
-                    let totalMinutes = 0;
-                    let totalWeightedMinutes = 0;
-                    const sportsData = allSports;
-
-                    querySnapshot.forEach(doc => {
-                        const entry = doc.data();
-                        const weight = sportsData[entry.sport] || 1.0;
-                        totalMinutes += entry.minutes;
-                        totalWeightedMinutes += entry.minutes * weight;
-                    });
-
-                    const publicDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, uid);
-                    await setDoc(publicDocRef, {
-                        nickname: nickname,
-                        minutes: totalMinutes,
-                        weightedMinutes: totalWeightedMinutes,
-                        lastUpdated: new Date()
-                    }, { merge: true });
-
-                } catch (e) {
-                    console.error("Fehler beim Aktualisieren des Leaderboards:", e);
-                }
-            }
-            
-            /** Lädt alle notwendigen Daten aus der DB und aktualisiert die UI */
-            async function loadAllData() {
-                try {
-                    appContainer.innerHTML = `<p class="text-center text-slate-400">Lade App-Daten...</p>`;
-                    entries = await getSportEntries(userId);
-                    allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(userId)) };
-                    leaderboardParticipants = await getLeaderboard();
-                    
-                    renderApp();
-                } catch (error) {
-                    console.error("Fehler beim Laden der App-Daten: ", error);
-                    showDynamicModal("Fehler", "Daten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            }
-
-
-            // =====================================
-            // UI Rendering und Update Funktionen
-            // =====================================
-
-            /**
-             * Zeigt ein dynamisches modales Fenster mit anpassbarem Titel, Nachricht und Buttons an.
-             * @param {string} title - Der Titel des Modals.
-             * @param {string} message - Die Nachricht des Modals.
-             * @param {Array<Object>} buttons - Ein Array von Button-Konfigurationsobjekten.
-             */
-            function showDynamicModal(title, message, buttons) {
-                modalContentWrapper.innerHTML = `
-                    <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
-                    <p class="text-slate-300 mb-4">${message}</p>
-                    <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
-                `;
-                modal.classList.remove('hidden');
-
-                const buttonContainer = document.getElementById('modal-buttons');
-                buttons.forEach(btnConfig => {
-                    const button = document.createElement('button');
-                    button.id = btnConfig.id;
-                    button.textContent = btnConfig.text;
-                    button.className = btnConfig.class;
-                    button.addEventListener('click', btnConfig.onClick);
-                    buttonContainer.appendChild(button);
-                });
-            }
-            
-            /** Rendert das Anmeldeformular für den Spitznamen. */
-            function renderNicknameForm() {
-                appContainer.innerHTML = `
-                    <div class="text-center p-6 bg-slate-700 rounded-xl">
-                        <h2 class="text-2xl font-semibold mb-4 text-white">Willkommen!</h2>
-                        <p class="text-slate-300 mb-4">Geben Sie Ihren Spitznamen ein, um zu beginnen.</p>
-                        <form id="nickname-form" class="space-y-4">
-                            <input type="text" id="nickname-input" placeholder="Ihr Spitzname" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                            <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Starten</button>
-                        </form>
-                    </div>
-                `;
-                const nicknameForm = document.getElementById('nickname-form');
-                const nicknameInput = document.getElementById('nickname-input');
-                nicknameForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const nickname = nicknameInput.value.trim();
-                    if (nickname) {
-                        currentUser = nickname;
-                        await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { nickname: currentUser }, { merge: true });
-                        await loadAllData();
-                        isAppReady = true;
-                        renderApp();
-                    } else {
-                        showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                    }
-                });
-            }
-
-            /** Rendert die Haupt-App. */
-            function renderApp() {
-                appContainer.innerHTML = `
-                    <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
-                        <!-- Navigationsleiste -->
-                        <nav class="bg-slate-700 rounded-xl p-2 flex flex-col sm:flex-row justify-start gap-2">
-                            <button data-section="dashboard" class="nav-button bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Dashboard</button>
-                            <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sportart eintragen</button>
-                            <button data-section="add-sport" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
-                        </nav>
-                        <!-- Abschnitt für das Dashboard -->
-                        <div id="dashboard-section" class="space-y-6">
-                            <!-- Teilnehmer Abschnitt -->
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Teilnehmer</h2>
-                                <div id="leaderboard" class="space-y-4">
-                                    <!-- Die Rangliste wird hier geladen -->
-                                </div>
-                            </div>
-                            <!-- Fortschritt Abschnitt -->
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h2 class="text-2xl font-bold text-white">Fortschritt</h2>
-                                </div>
-                                <div class="flex items-center justify-between mb-2 text-sm text-slate-300">
-                                    <span id="my-progress-label">Gesammelte Minuten</span>
-                                    <span id="my-progress-value">0</span>
-                                </div>
-                                <div class="flex justify-center mb-4">
-                                    <button id="toggle-progress-btn" class="text-sm text-slate-400 py-1 px-3 rounded-full border border-slate-600 hover:bg-slate-600 transition-colors">
-                                        Umschalten
-                                    </button>
-                                </div>
-                                
-                                <!-- Fortschrittsbalken -->
-                                <div class="h-6 bg-slate-800 rounded-full overflow-hidden mb-4 shadow-inner">
-                                    <div id="progress-bar" class="h-full bg-accent progress-bar-fill rounded-full" style="width: 0%;"></div>
-                                </div>
-                                <p id="progress-text" class="text-center text-sm font-semibold text-slate-400"></p>
-                                
-                                <div class="mt-8">
-                                    <h3 class="text-lg font-bold text-white mb-2">Aktivität</h3>
-                                    <div class="flex justify-center gap-2 mb-4">
-                                        <button data-timeframe="week" class="timeframe-btn bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
-                                        <button data-timeframe="month" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
-                                        <button data-timeframe="year" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
-                                    </div>
-                                    <canvas id="weekly-chart" class="w-full h-48"></canvas>
-                                </div>
-                            </div>
-                            <!-- Minuten pro Sportart Auswertung -->
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
-                                <div id="sport-summary-list" class="space-y-2">
-                                    <!-- Der Inhalt wird hier geladen -->
-                                </div>
-                            </div>
-                            <!-- Letzte Aktivitäten Abschnitt -->
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
-                                <div id="recent-activities" class="space-y-4">
-                                    <!-- Die Aktivitäten werden hier geladen -->
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Abschnitt zum Eintragen von Sport -->
-                        <div id="add-entry-section" class="hidden">
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Sportart hinzufügen</h2>
-                                <form id="add-entry-form" class="space-y-4">
-                                    <div>
-                                        <label for="sport-select" class="block text-slate-300 font-semibold mb-1">Sportart</label>
-                                        <select id="sport-select" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                            <!-- Sportarten werden hier dynamisch geladen -->
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
-                                        <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                    </div>
-                                    <div>
-                                        <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
-                                        <input type="number" id="minutes-input" value="0" min="0" class="w-full p-3 rounded-lg bg-slate-800 text-white text-center text-lg font-bold border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                        <div class="mt-2 grid grid-cols-3 gap-2">
-                                            <button type="button" data-minutes="5" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
-                                            <button type="button" data-minutes="10" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
-                                            <button type="button" data-minutes="15" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
-                                            <button type="button" data-minutes="30" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
-                                            <button type="button" data-minutes="60" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
-                                            <button type="button" id="clear-minutes-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
-                                        </div>
-                                    </div>
-                                    <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Eintrag hinzufügen</button>
-                                </form>
-                            </div>
-                        </div>
-                        <!-- Abschnitt zum Hinzufügen eigener Sportarten -->
-                        <div id="add-sport-section" class="hidden">
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Eigene Sportart hinzufügen</h2>
-                                <form id="add-sport-form" class="space-y-4">
-                                    <div>
-                                        <label for="new-sport-name" class="block text-slate-300 font-semibold mb-1">Name der Sportart</label>
-                                        <input type="text" id="new-sport-name" placeholder="z.B. Boxen" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                    </div>
-                                    <div>
-                                        <label for="new-sport-weight" class="block text-slate-300 font-semibold mb-1">Gewichtung (z.B. 1.5)</label>
-                                        <input type="number" step="0.1" id="new-sport-weight" placeholder="z.B. 1.5" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                    </div>
-                                    <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sportart hinzufügen</button>
-                                </form>
-                                <div class="mt-8">
-                                    <h3 class="text-lg font-bold text-white mb-2">Aktuelle Sportarten und Gewichtungen</h3>
-                                    <div id="sport-weight-list" class="space-y-2">
-                                        <!-- Die Liste wird hier geladen -->
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                const dateInput = document.getElementById('date-input');
-                const today = new Date().toISOString().split('T')[0];
-                dateInput.value = today;
-
-                setupEventListeners();
-                renderDashboard();
-            }
-
-            /**
-             * Zeigt einen bestimmten Abschnitt an und verbirgt die anderen.
-             * @param {string} sectionId - Die ID des anzuzeigenden Abschnitts.
-             */
-            function showSection(sectionId) {
-                document.querySelectorAll('.nav-button').forEach(btn => {
-                    const isSelected = btn.dataset.section === sectionId;
-                    btn.classList.toggle('bg-primary', isSelected);
-                    btn.classList.toggle('hover:bg-blue-700', isSelected);
-                    btn.classList.toggle('bg-slate-600', !isSelected);
-                    btn.classList.toggle('hover:bg-slate-500', !isSelected);
-                });
-
-                document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
-                document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
-                document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
-
-                if (sectionId === 'dashboard') {
-                    renderDashboard();
-                }
-            }
-
-            /** Rendert das Dashboard mit den aktuellen Daten */
-            function renderDashboard() {
-                renderMyProgress(entries.filter(entry => entry.userId === displayedUserId));
-                renderSportSummary(entries.filter(entry => entry.userId === displayedUserId));
-                renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
-                renderLeaderboard(leaderboardParticipants);
-                renderSportSelect();
-            }
-            
-            // =====================================
-            // UI Rendering und Update Funktionen (Fortsetzung)
-            // =====================================
-
-            /** Rendert die Sportarten-Dropdown-Liste neu */
-            function renderSportSelect() {
-                const sportSelect = document.getElementById('sport-select');
-                if (sportSelect) {
-                    sportSelect.innerHTML = Object.keys(allSports).map(sport => 
-                        `<option value="${sport}">${sport}</option>`
-                    ).join('');
-                }
-            }
-            
-            /** Rendert die Liste der Sportarten und ihrer Gewichtungen. */
-            function renderSportWeightList() {
-                const sportWeightListEl = document.getElementById('sport-weight-list');
-                if (!sportWeightListEl) return;
-                
-                sportWeightListEl.innerHTML = Object.entries(allSports).map(([sport, weight]) => `
-                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
-                        <span class="text-white font-semibold">${sport}</span>
-                        <span class="text-primary font-bold">Gewichtung: ${weight}</span>
-                    </div>
-                `).join('');
-            }
-
-            /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
-            async function showUserProgress(selectedUserId) {
-                if (selectedUserId === displayedUserId) return;
-                
-                showToast(`Lade Daten für ${leaderboardParticipants.find(p => p.id === selectedUserId)?.nickname || 'den Benutzer'}`, 'info');
-                
-                entries = await getSportEntries(selectedUserId);
-                allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(selectedUserId)) };
-
-                displayedUserId = selectedUserId;
-                renderDashboard();
-            }
-
-            function renderMyProgress(myEntries) {
-                const myProgressLabelEl = document.getElementById('my-progress-label');
-                const myProgressValueEl = document.getElementById('my-progress-value');
-                const progressBarEl = document.getElementById('progress-bar');
-                const progressTextEl = document.getElementById('progress-text');
-
-                if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !myEntries) return;
-
-                const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
-                const totalWeightedMinutes = myEntries.reduce((sum, entry) => {
-                    const weight = allSports[entry.sport] || 1.0;
-                    return sum + (entry.minutes * weight);
-                }, 0);
-
-                let displayValue = (myProgressView === 'minutes') ? totalMinutes : totalWeightedMinutes;
-                let progress = (displayValue / GOAL_MINUTES) * 100;
-                
-                myProgressLabelEl.textContent = (myProgressView === 'minutes') ? 'Gesammelte Minuten' : 'Gewichtete Minuten';
-                myProgressValueEl.textContent = displayValue.toFixed(myProgressView === 'weighted' ? 1 : 0);
-                progressBarEl.style.width = `${Math.min(100, progress)}%`;
-                progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}%`;
-
-                if (progress >= 100) {
-                    progressBarEl.classList.remove('bg-accent');
-                    progressBarEl.classList.add('bg-primary', 'animate-pulse-slow');
-                    progressTextEl.textContent = "Ziel erreicht! Herzlichen Glückwunsch! 🎉";
-                } else {
-                    progressBarEl.classList.remove('bg-primary', 'animate-pulse-slow');
-                    progressBarEl.classList.add('bg-accent');
-                }
-
-                renderWeeklyProgressGraph(myEntries);
-            }
-            
-            function renderWeeklyProgressGraph(myEntries) {
-                const canvas = document.getElementById('weekly-chart');
-                if (!canvas || !myEntries) return;
-
-                const containerWidth = canvas.parentElement.clientWidth;
-                canvas.width = containerWidth;
-                canvas.height = 192;
-
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                let dataPoints = [];
-                let labels = [];
-
-                const now = new Date();
-                const getEntryDate = (entry) => entry.timestamp instanceof Date ? entry.timestamp : new Date(entry.timestamp.toDate());
-
-                if (chartTimeframe === 'week') {
-                    const dailyMinutes = new Array(7).fill(0);
-                    const oneWeekAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
-                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneWeekAgo)
-                        .forEach(entry => {
-                            const entryDate = getEntryDate(entry);
-                            const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-                            if (diffDays >= 0 && diffDays < 7) dailyMinutes[6 - diffDays] += entry.minutes;
-                        });
-                    dataPoints = dailyMinutes;
-                    for (let i = 6; i >= 0; i--) {
-                        const date = new Date(now);
-                        date.setDate(now.getDate() - i);
-                        labels.push(date.toLocaleDateString('de-DE', { weekday: 'short' }));
-                    }
-                } else if (chartTimeframe === 'month') {
-                    const weeklyMinutes = new Array(4).fill(0);
-                    const oneMonthAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
-                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneMonthAgo)
-                        .forEach(entry => {
-                            const entryDate = getEntryDate(entry);
-                            const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-                            const weekIndex = Math.floor(diffDays / 7);
-                            if (weekIndex >= 0 && weekIndex < 4) weeklyMinutes[3 - weekIndex] += entry.minutes;
-                        });
-                    dataPoints = weeklyMinutes;
-                    labels = ['Woche 1', 'Woche 2', 'Woche 3', 'Woche 4'];
-                } else if (chartTimeframe === 'year') {
-                    const monthlyMinutes = new Array(12).fill(0);
-                    const oneYearAgo = now.getTime() - 365 * 24 * 60 * 60 * 1000;
-                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneYearAgo)
-                        .forEach(entry => {
-                            const entryDate = getEntryDate(entry);
-                            const diffMonths = (now.getFullYear() - entryDate.getFullYear()) * 12 + (now.getMonth() - entryDate.getMonth());
-                            if (diffMonths >= 0 && diffMonths < 12) monthlyMinutes[11 - diffMonths] += entry.minutes;
-                        });
-                    dataPoints = monthlyMinutes;
-                    for (let i = 11; i >= 0; i--) {
-                        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                        labels.push(monthDate.toLocaleDateString('de-DE', { month: 'short' }));
-                    }
-                }
-                
-                const maxMinutes = Math.max(...dataPoints, 1);
-                const padding = 30;
-                const chartHeight = canvas.height - 2 * padding;
-                const chartWidth = canvas.width - 2 * padding;
-                const pointSpacing = chartWidth / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
-
-                ctx.beginPath();
-                ctx.strokeStyle = '#22c55e';
-                ctx.lineWidth = 3;
-                const points = dataPoints.map((value, index) => ({
-                    x: padding + index * pointSpacing,
-                    y: padding + chartHeight - (value / maxMinutes) * chartHeight
-                }));
-                if (points.length > 0) {
-                    ctx.moveTo(points[0].x, points[0].y);
-                    points.forEach(point => ctx.lineTo(point.x, point.y));
-                }
-                ctx.stroke();
-                
-                ctx.textAlign = 'right';
-                ctx.fillStyle = '#94a3b8';
-                ctx.font = '10px Inter';
-                const yLabels = [0, Math.floor(maxMinutes / 2), maxMinutes];
-                yLabels.forEach(label => {
-                    const y = padding + chartHeight - (label / maxMinutes) * chartHeight;
-                    ctx.fillText(label, padding - 5, y + 4);
-                });
-                
-                points.forEach(point => {
-                    ctx.beginPath();
-                    ctx.fillStyle = '#22c55e';
-                    ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-
-                ctx.fillStyle = '#f3f4f6';
-                ctx.font = '12px Inter';
-                ctx.textAlign = 'center';
-                labels.forEach((label, index) => {
-                    const x = padding + index * pointSpacing;
-                    ctx.fillStyle = '#94a3b8';
-                    ctx.fillText(label, x, canvas.height - 5);
-                    ctx.fillStyle = '#f3f4f6';
-                    ctx.fillText(dataPoints[index], x, points[index].y - 10);
-                });
-            }
-
-            function renderLeaderboard(participants) {
-                const leaderboardEl = document.getElementById('leaderboard');
-                if (!leaderboardEl || !participants) return;
-
-                let sortedParticipants = [...participants];
-                
-                const loggedInUser = sortedParticipants.find(p => p.id === userId);
-                sortedParticipants = loggedInUser ? [loggedInUser, ...sortedParticipants.filter(p => p.id !== userId)] : sortedParticipants;
-                
-                const minutesLeader = [...participants].sort((a, b) => b.minutes - a.minutes)[0] || { minutes: -1, id: null };
-                const weightedLeader = [...participants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
-                
-                leaderboardEl.innerHTML = `
-                    <div class="flex flex-col sm:flex-row gap-4">
-                        ${sortedParticipants.map(p => {
-                            const isMinutesLeader = p.id === minutesLeader.id;
-                            const isWeightedLeader = p.id === weightedLeader.id;
-                            const isActiveUser = p.id === displayedUserId;
-                            
-                            return `
-                                <div data-user-id="${p.id}" class="flex-1 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
-                                    <h3 class="text-xl font-bold mb-2 text-white">
-                                        ${p.nickname}
-                                        ${p.id === userId ? ' (Du)' : ''}
-                                    </h3>
-                                    <div class="space-y-2">
-                                        <div class="p-3 rounded-lg bg-slate-700">
-                                            <div class="text-slate-400 text-sm">Gesammelte Minuten</div>
-                                            <div class="text-2xl font-extrabold ${isMinutesLeader ? 'text-primary' : 'text-white'}">
-                                                ${p.minutes.toFixed(0)}
-                                                ${isMinutesLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
-                                            </div>
-                                        </div>
-                                        <div class="p-3 rounded-lg bg-slate-700">
-                                            <div class="text-slate-400 text-sm">Gewichtete Minuten</div>
-                                            <div class="text-2xl font-extrabold ${isWeightedLeader ? 'text-accent' : 'text-white'}">
-                                                ${p.weightedMinutes.toFixed(1)}
-                                                ${isWeightedLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="text-sm text-slate-500 mt-2">${p.id}</div>
-                                    </div>
-                            `;
-                        }).join('')}
-                    </div>
-                `;
-            }
-
-            function renderSportSummary(myEntries) {
-                const summaryEl = document.getElementById('sport-summary-list');
-                if (!summaryEl || !myEntries) return;
-
-                const sportMinutes = {};
-                myEntries.forEach(entry => {
-                    const sportName = entry.sport;
-                    if (!sportMinutes[sportName]) sportMinutes[sportName] = 0;
-                    sportMinutes[sportName] += entry.minutes;
-                });
-                const sortedSports = Object.keys(sportMinutes).sort((a, b) => sportMinutes[b] - sportMinutes[a]);
-
-                summaryEl.innerHTML = sortedSports.map(sport => `
-                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
-                        <span class="text-white font-semibold">${sport}</span>
-                        <span class="text-primary font-bold">${sportMinutes[sport]} Minuten</span>
-                    </div>
-                `).join('');
-            }
-            
-            function renderRecentActivities(myEntries) {
-                const recentActivitiesEl = document.getElementById('recent-activities');
-                if (!recentActivitiesEl || !myEntries) return;
-                
-                const sortedActivities = myEntries.sort((a, b) => (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) - (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)));
-                
-                recentActivitiesEl.innerHTML = sortedActivities.map(activity => {
-                    const date = activity.timestamp.toDate ? activity.timestamp.toDate() : new Date(activity.timestamp);
-                    const dateString = date.toLocaleDateString('de-DE');
-                    const timeString = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-                    const isMyEntry = activity.userId === userId;
-                    
-                    if (isMyEntry && activity.id === editingDocId) {
-                        return `
-                            <div class="flex flex-col p-4 bg-slate-800 rounded-lg border border-primary" data-doc-id="${activity.id}">
-                                <div class="flex justify-between items-center mb-2">
-                                    <span class="text-white font-semibold">Eintrag von ${activity.nickname} bearbeiten</span>
-                                    <div class="flex space-x-2">
-                                        <button data-action="save" class="text-xs text-accent hover:text-green-400 transition-colors">Speichern</button>
-                                        <button data-action="cancel" class="text-xs text-secondary hover:text-red-400 transition-colors">Abbrechen</button>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <select id="edit-sport-select" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm">
-                                        ${Object.keys(allSports).map(sport => 
-                                            `<option value="${sport}" ${sport === activity.sport ? 'selected' : ''}>${sport}</option>`
-                                        ).join('')}
-                                    </select>
-                                    <input type="number" id="edit-minutes-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${activity.minutes}" min="1">
-                                    <input type="date" id="edit-date-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]}">
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        const actionButtons = isMyEntry ? `
-                            <div class="flex space-x-2">
-                                <button data-action="edit" data-doc-id="${activity.id}" class="text-xs text-slate-400 hover:text-white transition-colors">Bearbeiten</button>
-                                <button data-action="delete" data-doc-id="${activity.id}" class="text-xs text-secondary hover:text-red-400 transition-colors">Löschen</button>
-                            </div>
-                        ` : '';
-                        return `
-                            <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
-                                <div>
-                                    <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Minuten</span>
-                                    <span class="text-accent font-semibold">${activity.sport}</span> gemacht.
-                                </div>
-                                <div class="flex-shrink-0 text-right">
-                                    <span class="text-xs text-slate-500 block mb-1">${dateString} ${timeString}</span>
-                                    ${actionButtons}
-                                </div>
-                            </div>
-                        `;
-                    }
-                }).join('');
-            }
-            
-            // =====================================
-            // Event-Listener Setup
-            // =====================================
-            
-            function setupEventListeners() {
-                document.querySelectorAll('.nav-button').forEach(btn => {
-                    btn.addEventListener('click', () => showSection(btn.dataset.section));
-                });
-
-                document.getElementById('add-entry-form')?.addEventListener('submit', handleFormSubmit);
-                document.getElementById('add-sport-form')?.addEventListener('submit', handleAddSportFormSubmit);
-                document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
-                    myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
-                    renderDashboard();
-                });
-
-                document.querySelectorAll('.timeframe-btn').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        chartTimeframe = btn.dataset.timeframe;
-                        document.querySelectorAll('.timeframe-btn').forEach(b => {
-                            const isSelected = b.dataset.timeframe === chartTimeframe;
-                            b.classList.toggle('bg-primary', isSelected);
-                            b.classList.toggle('hover:bg-blue-700', isSelected);
-                            b.classList.toggle('bg-slate-600', !isSelected);
-                            b.classList.toggle('hover:bg-slate-500', !isSelected);
-                        });
-                        renderDashboard();
-                    });
-                });
-
-                // Event-Delegation für Minuten-Buttons
-                document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
-                    const target = e.target;
-                    const minutesInput = document.getElementById('minutes-input');
-                    if (target.classList.contains('minutes-btn')) {
-                        let currentMinutes = parseInt(minutesInput.value, 10);
-                        currentMinutes += parseInt(target.dataset.minutes, 10);
-                        minutesInput.value = currentMinutes;
-                    } else if (target.id === 'clear-minutes-btn') {
-                        minutesInput.value = '0';
-                    }
-                });
-
-                const sportSelect = document.getElementById('sport-select');
-                if (sportSelect) {
-                    sportSelect.addEventListener('change', () => {
-                        document.getElementById('minutes-input').value = '0';
-                    });
-                }
-
-                // Event-Delegation für die Liste der letzten Aktivitäten
-                document.getElementById('recent-activities')?.addEventListener('click', (e) => {
-                    const target = e.target;
-                    const docId = target.dataset.docId;
-                    const action = target.dataset.action;
-
-                    if (action === 'delete') handleDeleteClick(docId);
-                    else if (action === 'edit') handleEditClick(docId);
-                    else if (action === 'save') handleSaveEdit(docId);
-                    else if (action === 'cancel') handleCancelEdit();
-                });
-
-                // Event-Delegation für die Rangliste
-                document.getElementById('leaderboard')?.addEventListener('click', (e) => {
-                    const target = e.target.closest('[data-user-id]');
-                    if (target) showUserProgress(target.dataset.userId);
-                });
-            }
-            
-            // =====================================
-            // Formular-Handling
-            // =====================================
-            async function handleFormSubmit(e) {
-                e.preventDefault();
-                const sportSelect = document.getElementById('sport-select');
-                const dateInput = document.getElementById('date-input');
-                const minutesInput = document.getElementById('minutes-input');
-                const sport = sportSelect.value;
-                const date = dateInput.value;
-                const minutes = parseInt(minutesInput.value, 10);
-
-                if (minutes > 0 && date && userId && currentUser) {
-                    const newEntry = {
-                        userId: userId,
-                        nickname: currentUser,
-                        sport: sport,
-                        minutes: minutes,
-                        timestamp: new Date(date)
-                    };
-                    
-                    await addSportEntry(newEntry);
-                    
-                    minutesInput.value = '0';
-                    showSection('dashboard');
-                } else {
-                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            }
-            
-            async function handleAddSportFormSubmit(e) {
-                e.preventDefault();
-                const newSportNameInput = document.getElementById('new-sport-name');
-                const newSportWeightInput = document.getElementById('new-sport-weight');
-                const sportName = newSportNameInput.value.trim();
-                const sportWeight = parseFloat(newSportWeightInput.value);
-
-                if (sportName && !isNaN(sportWeight) && sportWeight > 0) {
-                    const userSports = { ...allSports };
-                    userSports[sportName] = sportWeight;
-                    
-                    await saveUserDefinedSports(userSports);
-                    
-                    showToast("Sportart hinzugefügt!", "success");
-                    newSportNameInput.value = '';
-                    newSportWeightInput.value = '';
-                    
-                    await loadAllData();
-                } else {
-                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            }
-            
-            // --- CRUD-Funktionen für Einträge ---
-            function handleDeleteClick(docId) {
-                showDynamicModal(
-                    "Eintrag löschen",
-                    "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?",
-                    [
-                        { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: async () => {
-                            await deleteSportEntry(docId);
-                            modal.classList.add('hidden');
-                        }},
-                        { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
-                    ]
-                );
-            }
-
-            function handleEditClick(docId) {
-                editingDocId = docId;
-                renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
-            }
-
-            async function handleSaveEdit(docId) {
-                const editedSport = document.getElementById('edit-sport-select').value;
-                const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
-                const editedDate = document.getElementById('edit-date-input').value;
-                
-                if (editedMinutes > 0 && editedDate) {
-                    const newEntry = {
-                        sport: editedSport,
-                        minutes: editedMinutes,
-                        timestamp: new Date(editedDate),
-                    };
-                    
-                    await updateSportEntry(docId, newEntry);
-                    
-                    editingDocId = null;
-                    renderDashboard();
-                } else {
-                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            }
-
-            function handleCancelEdit() {
-                editingDocId = null;
-                renderDashboard();
-            }
-
-            // =====================================
-            // App-Initialisierung
-            // =====================================
-            async function migrateDataFromLocalStorage(firebaseUid) {
-                appContainer.innerHTML = `<p class="text-center text-slate-400">Migriere lokale Daten...</p>`;
-                
-                const localStorageUserId = localStorage.getItem('userId');
-                const localStorageNickname = localStorage.getItem('nickname');
-                const sportEntriesStr = localStorage.getItem('sportEntries');
-                
-                if (!localStorageUserId || !localStorageNickname || !sportEntriesStr) {
-                    console.warn("Lokalstorage-Daten fehlen. Migration wird übersprungen.");
-                    await checkUserExistsAndLoad();
-                    return;
-                }
-
-                try {
-                    const entriesToMigrate = JSON.parse(sportEntriesStr).filter(entry => 
-                        entry.userId === localStorageUserId && entry.nickname === localStorageNickname
-                    );
-                    
-                    if (entriesToMigrate.length > 0) {
-                        const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
-                        await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
-
-                        const privateEntriesPath = `/artifacts/${appId}/users/${firebaseUid}/sportEntries`;
-                        const batchPromises = entriesToMigrate.map(entry => {
-                            const firestoreEntry = {
-                                ...entry,
-                                userId: firebaseUid,
-                                nickname: localStorageNickname,
-                                timestamp: new Date(entry.timestamp)
-                            };
-                            return addDoc(collection(db, privateEntriesPath), firestoreEntry);
-                        });
-                        await Promise.all(batchPromises);
-
-                        const userDefinedSportsStr = localStorage.getItem('userDefinedSports');
-                        if (userDefinedSportsStr) {
-                            const sports = JSON.parse(userDefinedSportsStr);
-                            const privateSportsPath = `/artifacts/${appId}/users/${firebaseUid}/userDefinedSports/sportsDoc`;
-                            await setDoc(doc(db, privateSportsPath), { sports });
-                        }
-                    
-                        showToast("Lokale Daten erfolgreich migriert!", "success");
-                    } else {
-                         console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
-                    }
-                    
-                    localStorage.removeItem('userId');
-                    localStorage.removeItem('nickname');
-                    localStorage.removeItem('sportEntries');
-                    localStorage.removeItem('userDefinedSports');
-
-                } catch (error) {
-                    console.error("Fehler bei der Migration:", error);
-                    showDynamicModal("Migrationsfehler", "Ein Fehler ist bei der Datenmigration aufgetreten. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-                finally {
-                    await loadAllData();
-                }
-            }
-
-            async function checkUserExistsAndLoad() {
-                const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
-                try {
-                    const userDoc = await getDoc(userDocRef);
-                    if (userDoc.exists()) {
-                        currentUser = userDoc.data().nickname;
-                        await loadAllData();
-                        renderApp();
-                    } else {
-                        renderNicknameForm();
-                    }
-                } catch (error) {
-                    console.error("Fehler beim Laden der Benutzerdaten:", error);
-                    showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                }
-            }
-            
-            async function startApp() {
-                if (!app) {
-                    showConfigModal();
-                    return;
-                }
-
-                if (!auth || !db) {
-                    console.error("Firebase Auth oder Firestore Instanz nicht initialisiert.");
-                    showDynamicModal("Initialisierungsfehler", "Firebase konnte nicht richtig geladen werden. Überprüfen Sie Ihre Konfiguration.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                    return;
-                }
-                
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch (error) {
-                    console.error('Authentifizierungsfehler:', error);
-                    showDynamicModal("Authentifizierungsfehler", "Konnte mich nicht anmelden. Bitte überprüfen Sie Ihre Internetverbindung.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                    return;
-                }
-
-                userId = auth.currentUser.uid;
-                displayedUserId = userId;
-
-                const hasLocalData = localStorage.getItem('userId') && localStorage.getItem('sportEntries');
-                if (hasLocalData) {
-                    await migrateDataFromLocalStorage(userId);
-                } else {
-                    await checkUserExistsAndLoad();
-                }
-            }
-
-            startApp();
-        })();
-    </script>
+                        <button id="save-config-btn" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors mt-4">Speichern und neu laden</button>
+                        <div id="config-error" class="text-secondary text-sm mt-2 hidden"></div>
+                    </div>
+                `;
+                modal.classList.remove('hidden');
+
+                document.getElementById('save-config-btn').addEventListener('click', () => {
+                    const configInput = document.getElementById('config-input').value;
+                    const errorEl = document.getElementById('config-error');
+                    try {
+                        const parsedConfig = JSON.parse(configInput);
+                        localStorage.setItem('firebaseConfig', JSON.stringify(parsedConfig));
+                        window.location.reload();
+                    } catch (e) {
+                        errorEl.textContent = 'Ungültiges JSON-Format. Bitte überprüfen Sie Ihre Eingabe.';
+                        errorEl.classList.remove('hidden');
+                    }
+                });
+            }
+            
+            /** Zeigt eine Toast-Benachrichtigung an */
+            function showToast(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = message;
+                toastContainer.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.remove();
+                }, 4000);
+            }
+
+            // =====================================
+            // Firebase-Datenbank-Funktionen
+            // =====================================
+
+            /**
+             * Ruft die Sporteinträge eines Benutzers aus Firestore ab.
+             * @param {string} uid - Die Benutzer-ID.
+             */
+            async function getSportEntries(uid) {
+                if (!db) {
+                    console.error("Firestore-Instanz ist nicht verfügbar.");
+                    return [];
+                }
+                const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
+                const q = query(collection(db, privateEntriesPath));
+                const querySnapshot = await getDocs(q);
+                const entries = [];
+                querySnapshot.forEach(doc => {
+                    entries.push({ id: doc.id, ...doc.data() });
+                });
+                return entries;
+            }
+
+            /**
+             * Fügt einen neuen Sporteintrag in Firestore hinzu.
+             * @param {object} entry - Das hinzuzufügende Datenobjekt.
+             */
+            async function addSportEntry(entry) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    await addDoc(collection(db, privateEntriesPath), entry);
+                    await updateLeaderboardStats(userId, currentUser);
+                    showToast("Sporteintrag hinzugefügt!", "success");
+                    await loadAllData();
+                } catch (e) {
+                    console.error("Fehler beim Hinzufügen des Dokuments: ", e);
+                    showToast("Fehler beim Hinzufügen des Eintrags.", "error");
+                }
+            }
+
+            /**
+             * Löscht einen Sporteintrag aus Firestore.
+             * @param {string} docId - Die ID des zu löschenden Dokuments.
+             */
+            async function deleteSportEntry(docId) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    await deleteDoc(doc(db, privateEntriesPath, docId));
+                    await updateLeaderboardStats(userId, currentUser);
+                    showToast("Eintrag gelöscht.", "info");
+                    await loadAllData();
+                } catch (e) {
+                    console.error("Fehler beim Löschen des Dokuments: ", e);
+                    showToast("Fehler beim Löschen des Eintrags.", "error");
+                }
+            }
+            
+            /**
+             * Aktualisiert einen bestehenden Sporteintrag in Firestore.
+             * @param {string} docId - Die ID des zu aktualisierenden Dokuments.
+             * @param {object} newEntry - Die aktualisierten Daten.
+             */
+            async function updateSportEntry(docId, newEntry) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    await updateDoc(doc(db, privateEntriesPath, docId), newEntry);
+                    await updateLeaderboardStats(userId, currentUser);
+                    showToast("Eintrag aktualisiert.", "success");
+                    await loadAllData();
+                } catch (e) {
+                    console.error("Fehler beim Aktualisieren des Dokuments: ", e);
+                    showToast("Fehler beim Aktualisieren des Eintrags.", "error");
+                }
+            }
+
+            /**
+             * Ruft benutzerdefinierte Sportarten aus Firestore ab.
+             * @param {string} uid - Die Benutzer-ID.
+             */
+            async function getUserDefinedSports(uid) {
+                if (!db) {
+                    console.error("Firestore-Instanz ist nicht verfügbar.");
+                    return SPORT_WEIGHTS;
+                }
+                const privateSportsPath = `/artifacts/${appId}/users/${uid}/userDefinedSports/sportsDoc`;
+                const docRef = doc(db, privateSportsPath);
+                const docSnap = await getDoc(docRef);
+                return docSnap.exists() ? docSnap.data().sports : {};
+            }
+
+            /**
+             * Speichert benutzerdefinierte Sportarten in Firestore.
+             * @param {object} sports - Das Objekt mit Sportarten und Gewichtungen.
+             */
+            async function saveUserDefinedSports(sports) {
+                if (!db) return;
+                try {
+                    const privateSportsPath = `/artifacts/${appId}/users/${userId}/userDefinedSports/sportsDoc`;
+                    await setDoc(doc(db, privateSportsPath), { sports });
+                } catch (e) {
+                    console.error("Fehler beim Speichern der Sportarten: ", e);
+                }
+            }
+
+            /**
+             * Ruft die Leaderboard-Daten aus Firestore ab.
+             */
+            async function getLeaderboard() {
+                if (!db) {
+                    console.error("Firestore-Instanz ist nicht verfügbar.");
+                    return [];
+                }
+                const publicLeaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
+                const q = query(collection(db, publicLeaderboardPath));
+                const querySnapshot = await getDocs(q);
+                const participants = [];
+                querySnapshot.forEach(doc => {
+                    participants.push({ id: doc.id, ...doc.data() });
+                });
+                return participants;
+            }
+
+            /**
+             * Aktualisiert die Statistiken eines Benutzers im öffentlichen Leaderboard.
+             * @param {string} uid - Die Benutzer-ID.
+             * @param {string} nickname - Der Spitzname des Benutzers.
+             */
+            async function updateLeaderboardStats(uid, nickname) {
+                if (!db) return;
+                try {
+                    const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
+                    const q = query(collection(db, privateEntriesPath));
+                    const querySnapshot = await getDocs(q);
+
+                    let totalMinutes = 0;
+                    let totalWeightedMinutes = 0;
+                    const sportsData = allSports;
+
+                    querySnapshot.forEach(doc => {
+                        const entry = doc.data();
+                        const weight = sportsData[entry.sport] || 1.0;
+                        totalMinutes += entry.minutes;
+                        totalWeightedMinutes += entry.minutes * weight;
+                    });
+
+                    const publicDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, uid);
+                    await setDoc(publicDocRef, {
+                        nickname: nickname,
+                        minutes: totalMinutes,
+                        weightedMinutes: totalWeightedMinutes,
+                        lastUpdated: new Date()
+                    }, { merge: true });
+
+                } catch (e) {
+                    console.error("Fehler beim Aktualisieren des Leaderboards:", e);
+                }
+            }
+            
+            /** Lädt alle notwendigen Daten aus der DB und aktualisiert die UI */
+            async function loadAllData() {
+                try {
+                    appContainer.innerHTML = `<p class="text-center text-slate-400">Lade App-Daten...</p>`;
+                    entries = await getSportEntries(userId);
+                    allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(userId)) };
+                    leaderboardParticipants = await getLeaderboard();
+                    
+                    renderApp();
+                } catch (error) {
+                    console.error("Fehler beim Laden der App-Daten: ", error);
+                    showDynamicModal("Fehler", "Daten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+
+            /**
+             * Holt alle Daten vom alten Profil und speichert sie unter der neuen userId.
+             */
+            async function importProfileData(oldUserId, newNickname) {
+                if (!db || !userId) return showToast("Fehler: Datenbank nicht bereit.", "error");
+
+                try {
+                    // 1. Lade Einträge und Sportarten des alten Benutzers
+                    showToast("Lade alte Profildaten...", "info");
+                    const oldEntries = await getSportEntries(oldUserId);
+                    const oldSports = await getUserDefinedSports(oldUserId);
+                    
+                    // 2. Leaderboard des neuen UIDs aktualisieren (wird mit 0 Minuten überschrieben, aber der Nickname ist korrekt)
+                    const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
+                    await setDoc(doc(db, leaderboardPath, userId), { nickname: newNickname, minutes: 0, weightedMinutes: 0 }, { merge: true });
+                    
+                    // 3. Füge die Sportarten zum neuen UID hinzu
+                    await saveUserDefinedSports(oldSports); 
+                    
+                    // 4. Füge alle alten Einträge dem neuen UID hinzu
+                    showToast("Migriere Einträge...", "info");
+                    const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
+                    const batchPromises = oldEntries.map(entry => {
+                        const firestoreEntry = {
+                            ...entry,
+                            userId: userId,
+                            nickname: newNickname,
+                            timestamp: entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp)
+                        };
+                        return addDoc(collection(db, privateEntriesPath), firestoreEntry);
+                    });
+                    await Promise.all(batchPromises);
+                    
+                    // 5. Leaderboard-Statistik des neuen Benutzers aktualisieren
+                    await updateLeaderboardStats(userId, newNickname);
+
+                    showToast("Profil erfolgreich übernommen!", "success");
+                    return true;
+                    
+                } catch (e) {
+                    console.error("Fehler beim Importieren des Profils:", e);
+                    showDynamicModal("Importfehler", "Beim Versuch, das Profil zu übernehmen, ist ein Fehler aufgetreten.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return false;
+                }
+            }
+
+
+            // ... (restliche UI Funktionen)
+            
+            // =====================================
+            // UI Rendering und Update Funktionen
+            // =====================================
+
+            /**
+             * Zeigt ein dynamisches modales Fenster mit anpassbarem Titel, Nachricht und Buttons an.
+             * @param {string} title - Der Titel des Modals.
+             * @param {string} message - Die Nachricht des Modals.
+             * @param {Array<Object>} buttons - Ein Array von Button-Konfigurationsobjekten.
+             */
+            function showDynamicModal(title, message, buttons) {
+                modalContentWrapper.innerHTML = `
+                    <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
+                    <p class="text-slate-300 mb-4">${message}</p>
+                    <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
+                `;
+                modal.classList.remove('hidden');
+
+                const buttonContainer = document.getElementById('modal-buttons');
+                buttons.forEach(btnConfig => {
+                    const button = document.createElement('button');
+                    button.id = btnConfig.id;
+                    button.textContent = btnConfig.text;
+                    button.className = btnConfig.class;
+                    button.addEventListener('click', btnConfig.onClick);
+                    buttonContainer.appendChild(button);
+                });
+            }
+            
+            /** Rendert das Anmeldeformular für den Spitznamen. */
+            function renderNicknameForm() {
+                // NEUE HTML-Struktur für das Anmeldeformular mit Import-Option
+                appContainer.innerHTML = `
+                    <div class="text-center p-6 bg-slate-700 rounded-xl shadow-2xl space-y-6">
+                        <h2 class="text-2xl font-semibold mb-4 text-white">Willkommen!</h2>
+                        <p class="text-slate-300">Geben Sie Ihren Spitznamen ein, um ein **neues Profil** zu starten, oder importieren Sie ein bestehendes Profil über die **Profil-ID**.</p>
+                        
+                        <!-- NEUES PROFIL STARTEN -->
+                        <form id="nickname-form" class="space-y-4 border-b border-slate-600 pb-6">
+                            <input type="text" id="nickname-input" placeholder="Neuer Spitzname (z.B. Sportler99)" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-accent" required>
+                            <button type="submit" id="create-profile-btn" class="w-full bg-accent text-white font-semibold py-3 rounded-lg hover:bg-green-600 transition-colors">Neues Profil erstellen</button>
+                        </form>
+                        
+                        <!-- PROFIL IMPORTIEREN -->
+                        <div id="import-section" class="space-y-4 pt-4">
+                            <h3 class="text-xl font-bold text-primary">Bestehendes Profil importieren</h3>
+                            <p class="text-slate-400 text-sm">Geben Sie die ID des alten Geräts/Profils (vom Leaderboard) ein, um dessen Daten zu übernehmen. **Achtung: Dies löscht keine alten IDs, aber macht diese Sitzung zur neuen primären Sitzung.**</p>
+                            <input type="text" id="import-id-input" placeholder="Alte Profil-ID (z.B. 1234abc...)" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                            <button type="button" id="import-profile-btn" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Profil importieren & übernehmen</button>
+                            <div id="import-error" class="text-secondary text-sm mt-2 hidden"></div>
+                        </div>
+                        <div class="text-sm text-slate-500 mt-4">Aktuelle Sitzungs-ID: ${userId}</div>
+                    </div>
+                `;
+                const nicknameForm = document.getElementById('nickname-form');
+                const nicknameInput = document.getElementById('nickname-input');
+                const importIdInput = document.getElementById('import-id-input');
+                const importProfileBtn = document.getElementById('import-profile-btn');
+                const importErrorEl = document.getElementById('import-error');
+
+                // Handle NEUES PROFIL erstellen
+                nicknameForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const nickname = nicknameInput.value.trim();
+                    if (nickname) {
+                        // Check ob Nickname schon existiert, um Konflikte zu vermeiden
+                        const leaderboardSnapshot = await getLeaderboard();
+                        if (leaderboardSnapshot.some(p => p.nickname === nickname)) {
+                            showDynamicModal("Nickname Konflikt", `Der Spitzname "${nickname}" existiert bereits. Bitte verwenden Sie einen anderen Namen oder die Import-Funktion.`, [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                            return;
+                        }
+
+                        currentUser = nickname;
+                        // Erstellt neuen Eintrag im Leaderboard (startet mit 0 Minuten)
+                        await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { nickname: currentUser, minutes: 0, weightedMinutes: 0, lastUpdated: new Date() });
+                        
+                        // Initialisiere die Standard-Sportarten
+                        await saveUserDefinedSports(SPORT_WEIGHTS);
+
+                        await loadAllData();
+                        isAppReady = true;
+                        renderApp();
+                    } else {
+                        showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    }
+                });
+
+                // Handle PROFIL IMPORTIEREN
+                importProfileBtn.addEventListener('click', async () => {
+                    const oldUserId = importIdInput.value.trim();
+                    
+                    if (oldUserId === userId) {
+                        importErrorEl.textContent = 'Dies ist Ihre aktuelle Sitzungs-ID.';
+                        importErrorEl.classList.remove('hidden');
+                        return;
+                    }
+
+                    if (!oldUserId) {
+                        importErrorEl.textContent = 'Bitte geben Sie eine gültige Profil-ID ein.';
+                        importErrorEl.classList.remove('hidden');
+                        return;
+                    }
+                    
+                    importErrorEl.classList.add('hidden');
+
+                    // Lade das Leaderboard-Dokument der alten ID, um den Nickname zu erhalten
+                    const oldUserDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, oldUserId);
+                    const oldUserDoc = await getDoc(oldUserDocRef);
+                    
+                    if (!oldUserDoc.exists()) {
+                        importErrorEl.textContent = 'Kein Profil mit dieser ID gefunden.';
+                        importErrorEl.classList.remove('hidden');
+                        return;
+                    }
+
+                    const oldNickname = oldUserDoc.data().nickname;
+                    
+                    // Bestätigungsmodal, da Daten von der alten ID zur neuen ID kopiert werden
+                    showDynamicModal(
+                        "Profil übernehmen?",
+                        `Möchten Sie das Profil von **"${oldNickname}"** auf dieses Gerät übernehmen? Dadurch werden alle Aktivitätsdaten und Sportart-Definitionen dieses Profils auf Ihre aktuelle Sitzungs-ID übertragen.`,
+                        [
+                            { id: 'confirm-yes-import-btn', text: 'Ja, Profil übernehmen', class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', onClick: async () => {
+                                modal.classList.add('hidden');
+                                const success = await importProfileData(oldUserId, oldNickname);
+                                if (success) {
+                                    // Nach erfolgreichem Import muss der neue Benutzer mit den neuen Daten geladen werden
+                                    currentUser = oldNickname;
+                                    await loadAllData();
+                                    isAppReady = true;
+                                    renderApp();
+                                }
+                            }},
+                            { id: 'confirm-no-import-btn', text: 'Abbrechen', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                        ]
+                    );
+                });
+            }
+
+            // ... (Rest des Codes bleibt unverändert)
+            
+            // =====================================
+            // UI Rendering und Update Funktionen
+            // =====================================
+
+            /**
+             * Zeigt ein dynamisches modales Fenster mit anpassbarem Titel, Nachricht und Buttons an.
+             * @param {string} title - Der Titel des Modals.
+             * @param {string} message - Die Nachricht des Modals.
+             * @param {Array<Object>} buttons - Ein Array von Button-Konfigurationsobjekten.
+             */
+            function showDynamicModal(title, message, buttons) {
+                modalContentWrapper.innerHTML = `
+                    <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
+                    <p class="text-slate-300 mb-4">${message}</p>
+                    <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
+                `;
+                modal.classList.remove('hidden');
+
+                const buttonContainer = document.getElementById('modal-buttons');
+                buttons.forEach(btnConfig => {
+                    const button = document.createElement('button');
+                    button.id = btnConfig.id;
+                    button.textContent = btnConfig.text;
+                    button.className = btnConfig.class;
+                    button.addEventListener('click', btnConfig.onClick);
+                    buttonContainer.appendChild(button);
+                });
+            }
+            
+            // ... (Fortsetzung der UI-Funktionen)
+
+            /** Rendert die Haupt-App. */
+            function renderApp() {
+                appContainer.innerHTML = `
+                    <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
+                        <!-- Navigationsleiste -->
+                        <nav class="bg-slate-700 rounded-xl p-2 flex flex-col sm:flex-row justify-start gap-2">
+                            <button data-section="dashboard" class="nav-button bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Dashboard</button>
+                            <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sportart eintragen</button>
+                            <button data-section="add-sport" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
+                        </nav>
+                        <!-- Abschnitt für das Dashboard -->
+                        <div id="dashboard-section" class="space-y-6">
+                            <!-- Teilnehmer Abschnitt -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Teilnehmer</h2>
+                                <div id="leaderboard" class="space-y-4">
+                                    <!-- Die Rangliste wird hier geladen -->
+                                </div>
+                            </div>
+                            <!-- Fortschritt Abschnitt -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <div class="flex items-center justify-between mb-2">
+                                    <h2 class="text-2xl font-bold text-white">Fortschritt</h2>
+                                </div>
+                                <div class="flex items-center justify-between mb-2 text-sm text-slate-300">
+                                    <span id="my-progress-label">Gesammelte Minuten</span>
+                                    <span id="my-progress-value">0</span>
+                                </div>
+                                <div class="flex justify-center mb-4">
+                                    <button id="toggle-progress-btn" class="text-sm text-slate-400 py-1 px-3 rounded-full border border-slate-600 hover:bg-slate-600 transition-colors">
+                                        Umschalten
+                                    </button>
+                                </div>
+                                
+                                <!-- Fortschrittsbalken -->
+                                <div class="h-6 bg-slate-800 rounded-full overflow-hidden mb-4 shadow-inner">
+                                    <div id="progress-bar" class="h-full bg-accent progress-bar-fill rounded-full" style="width: 0%;"></div>
+                                </div>
+                                <p id="progress-text" class="text-center text-sm font-semibold text-slate-400"></p>
+                                
+                                <div class="mt-8">
+                                    <h3 class="text-lg font-bold text-white mb-2">Aktivität</h3>
+                                    <div class="flex justify-center gap-2 mb-4">
+                                        <button data-timeframe="week" class="timeframe-btn bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
+                                        <button data-timeframe="month" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
+                                        <button data-timeframe="year" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
+                                    </div>
+                                    <canvas id="weekly-chart" class="w-full h-48"></canvas>
+                                </div>
+                            </div>
+                            <!-- Minuten pro Sportart Auswertung -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
+                                <div id="sport-summary-list" class="space-y-2">
+                                    <!-- Der Inhalt wird hier geladen -->
+                                </div>
+                            </div>
+                            <!-- Letzte Aktivitäten Abschnitt -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
+                                <div id="recent-activities" class="space-y-4">
+                                    <!-- Die Aktivitäten werden hier geladen -->
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Abschnitt zum Eintragen von Sport -->
+                        <div id="add-entry-section" class="hidden">
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Sportart hinzufügen</h2>
+                                <form id="add-entry-form" class="space-y-4">
+                                    <div>
+                                        <label for="sport-select" class="block text-slate-300 font-semibold mb-1">Sportart</label>
+                                        <select id="sport-select" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                            <!-- Sportarten werden hier dynamisch geladen -->
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
+                                        <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                    <div>
+                                        <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
+                                        <input type="number" id="minutes-input" value="0" min="0" class="w-full p-3 rounded-lg bg-slate-800 text-white text-center text-lg font-bold border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                        <div class="mt-2 grid grid-cols-3 gap-2">
+                                            <button type="button" data-minutes="5" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
+                                            <button type="button" data-minutes="10" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
+                                            <button type="button" data-minutes="15" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
+                                            <button type="button" data-minutes="30" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
+                                            <button type="button" data-minutes="60" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
+                                            <button type="button" id="clear-minutes-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
+                                        </div>
+                                    </div>
+                                    <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Eintrag hinzufügen</button>
+                                </form>
+                            </div>
+                        </div>
+                        <!-- Abschnitt zum Hinzufügen eigener Sportarten -->
+                        <div id="add-sport-section" class="hidden">
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">Eigene Sportart hinzufügen</h2>
+                                <form id="add-sport-form" class="space-y-4">
+                                    <div>
+                                        <label for="new-sport-name" class="block text-slate-300 font-semibold mb-1">Name der Sportart</label>
+                                        <input type="text" id="new-sport-name" placeholder="z.B. Boxen" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                    <div>
+                                        <label for="new-sport-weight" class="block text-slate-300 font-semibold mb-1">Gewichtung (z.B. 1.5)</label>
+                                        <input type="number" step="0.1" id="new-sport-weight" placeholder="z.b. 1.5" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                    </div>
+                                    <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sportart hinzufügen</button>
+                                </form>
+                                <div class="mt-8">
+                                    <h3 class="text-lg font-bold text-white mb-2">Aktuelle Sportarten und Gewichtungen</h3>
+                                    <div id="sport-weight-list" class="space-y-2">
+                                        <!-- Die Liste wird hier geladen -->
+                                    </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                `;
+                const dateInput = document.getElementById('date-input');
+                const today = new Date().toISOString().split('T')[0];
+                dateInput.value = today;
+
+                setupEventListeners();
+                renderDashboard();
+            }
+
+            /**
+             * Zeigt einen bestimmten Abschnitt an und verbirgt die anderen.
+             * @param {string} sectionId - Die ID des anzuzeigenden Abschnitts.
+             */
+            function showSection(sectionId) {
+                document.querySelectorAll('.nav-button').forEach(btn => {
+                    const isSelected = btn.dataset.section === sectionId;
+                    btn.classList.toggle('bg-primary', isSelected);
+                    btn.classList.toggle('hover:bg-blue-700', isSelected);
+                    btn.classList.toggle('bg-slate-600', !isSelected);
+                    btn.classList.toggle('hover:bg-slate-500', !isSelected);
+                });
+
+                document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
+                document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
+                document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
+
+                if (sectionId === 'dashboard') {
+                    renderDashboard();
+                }
+            }
+
+            /** Rendert das Dashboard mit den aktuellen Daten */
+            function renderDashboard() {
+                renderMyProgress(entries.filter(entry => entry.userId === displayedUserId));
+                renderSportSummary(entries.filter(entry => entry.userId === displayedUserId));
+                renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
+                renderLeaderboard(leaderboardParticipants);
+                renderSportSelect();
+            }
+            
+            // =====================================
+            // UI Rendering und Update Funktionen (Fortsetzung)
+            // =====================================
+
+            /** Rendert die Sportarten-Dropdown-Liste neu */
+            function renderSportSelect() {
+                const sportSelect = document.getElementById('sport-select');
+                if (sportSelect) {
+                    sportSelect.innerHTML = Object.keys(allSports).map(sport => 
+                        `<option value="${sport}">${sport}</option>`
+                    ).join('');
+                }
+            }
+            
+            /** Rendert die Liste der Sportarten und ihrer Gewichtungen. */
+            function renderSportWeightList() {
+                const sportWeightListEl = document.getElementById('sport-weight-list');
+                if (!sportWeightListEl) return;
+                
+                sportWeightListEl.innerHTML = Object.entries(allSports).map(([sport, weight]) => `
+                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
+                        <span class="text-white font-semibold">${sport}</span>
+                        <span class="text-primary font-bold">Gewichtung: ${weight}</span>
+                    </div>
+                `).join('');
+            }
+
+            /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
+            async function showUserProgress(selectedUserId) {
+                if (selectedUserId === displayedUserId) return;
+                
+                showToast(`Lade Daten für ${leaderboardParticipants.find(p => p.id === selectedUserId)?.nickname || 'den Benutzer'}`, 'info');
+                
+                entries = await getSportEntries(selectedUserId);
+                allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(selectedUserId)) };
+
+                displayedUserId = selectedUserId;
+                renderDashboard();
+            }
+
+            function renderMyProgress(myEntries) {
+                const myProgressLabelEl = document.getElementById('my-progress-label');
+                const myProgressValueEl = document.getElementById('my-progress-value');
+                const progressBarEl = document.getElementById('progress-bar');
+                const progressTextEl = document.getElementById('progress-text');
+
+                if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !myEntries) return;
+
+                const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
+                const totalWeightedMinutes = myEntries.reduce((sum, entry) => {
+                    const weight = allSports[entry.sport] || 1.0;
+                    return sum + (entry.minutes * weight);
+                }, 0);
+
+                let displayValue = (myProgressView === 'minutes') ? totalMinutes : totalWeightedMinutes;
+                let progress = (displayValue / GOAL_MINUTES) * 100;
+                
+                myProgressLabelEl.textContent = (myProgressView === 'minutes') ? 'Gesammelte Minuten' : 'Gewichtete Minuten';
+                myProgressValueEl.textContent = displayValue.toFixed(myProgressView === 'weighted' ? 1 : 0);
+                progressBarEl.style.width = `${Math.min(100, progress)}%`;
+                progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}%`;
+
+                if (progress >= 100) {
+                    progressBarEl.classList.remove('bg-accent');
+                    progressBarEl.classList.add('bg-primary', 'animate-pulse-slow');
+                    progressTextEl.textContent = "Ziel erreicht! Herzlichen Glückwunsch! 🎉";
+                } else {
+                    progressBarEl.classList.remove('bg-primary', 'animate-pulse-slow');
+                    progressBarEl.classList.add('bg-accent');
+                }
+
+                renderWeeklyProgressGraph(myEntries);
+            }
+            
+            function renderWeeklyProgressGraph(myEntries) {
+                const canvas = document.getElementById('weekly-chart');
+                if (!canvas || !myEntries) return;
+
+                const containerWidth = canvas.parentElement.clientWidth;
+                canvas.width = containerWidth;
+                canvas.height = 192;
+
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                let dataPoints = [];
+                let labels = [];
+
+                const now = new Date();
+                const getEntryDate = (entry) => entry.timestamp instanceof Date ? entry.timestamp : new Date(entry.timestamp.toDate());
+
+                if (chartTimeframe === 'week') {
+                    const dailyMinutes = new Array(7).fill(0);
+                    const oneWeekAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneWeekAgo)
+                        .forEach(entry => {
+                            const entryDate = getEntryDate(entry);
+                            const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+                            if (diffDays >= 0 && diffDays < 7) dailyMinutes[6 - diffDays] += entry.minutes;
+                        });
+                    dataPoints = dailyMinutes;
+                    for (let i = 6; i >= 0; i--) {
+                        const date = new Date(now);
+                        date.setDate(now.getDate() - i);
+                        labels.push(date.toLocaleDateString('de-DE', { weekday: 'short' }));
+                    }
+                } else if (chartTimeframe === 'month') {
+                    const weeklyMinutes = new Array(4).fill(0);
+                    const oneMonthAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneMonthAgo)
+                        .forEach(entry => {
+                            const entryDate = getEntryDate(entry);
+                            const diffDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+                            const weekIndex = Math.floor(diffDays / 7);
+                            if (weekIndex >= 0 && weekIndex < 4) weeklyMinutes[3 - weekIndex] += entry.minutes;
+                        });
+                    dataPoints = weeklyMinutes;
+                    labels = ['Woche 1', 'Woche 2', 'Woche 3', 'Woche 4'];
+                } else if (chartTimeframe === 'year') {
+                    const monthlyMinutes = new Array(12).fill(0);
+                    const oneYearAgo = now.getTime() - 365 * 24 * 60 * 60 * 1000;
+                    myEntries.filter(entry => getEntryDate(entry).getTime() > oneYearAgo)
+                        .forEach(entry => {
+                            const entryDate = getEntryDate(entry);
+                            const diffMonths = (now.getFullYear() - entryDate.getFullYear()) * 12 + (now.getMonth() - entryDate.getMonth());
+                            if (diffMonths >= 0 && diffMonths < 12) monthlyMinutes[11 - diffMonths] += entry.minutes;
+                        });
+                    dataPoints = monthlyMinutes;
+                    for (let i = 11; i >= 0; i--) {
+                        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                        labels.push(monthDate.toLocaleDateString('de-DE', { month: 'short' }));
+                    }
+                }
+                
+                const maxMinutes = Math.max(...dataPoints, 1);
+                const padding = 30;
+                const chartHeight = canvas.height - 2 * padding;
+                const chartWidth = canvas.width - 2 * padding;
+                const pointSpacing = chartWidth / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
+
+                ctx.beginPath();
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 3;
+                const points = dataPoints.map((value, index) => ({
+                    x: padding + index * pointSpacing,
+                    y: padding + chartHeight - (value / maxMinutes) * chartHeight
+                }));
+                if (points.length > 0) {
+                    ctx.moveTo(points[0].x, points[0].y);
+                    points.forEach(point => ctx.lineTo(point.x, point.y));
+                }
+                ctx.stroke();
+                
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '10px Inter';
+                const yLabels = [0, Math.floor(maxMinutes / 2), maxMinutes];
+                yLabels.forEach(label => {
+                    const y = padding + chartHeight - (label / maxMinutes) * chartHeight;
+                    ctx.fillText(label, padding - 5, y + 4);
+                });
+                
+                points.forEach(point => {
+                    ctx.beginPath();
+                    ctx.fillStyle = '#22c55e';
+                    ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                ctx.fillStyle = '#f3f4f6';
+                ctx.font = '12px Inter';
+                ctx.textAlign = 'center';
+                labels.forEach((label, index) => {
+                    const x = padding + index * pointSpacing;
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.fillText(label, x, canvas.height - 5);
+                    ctx.fillStyle = '#f3f4f6';
+                    ctx.fillText(dataPoints[index], x, points[index].y - 10);
+                });
+            }
+
+            function renderLeaderboard(participants) {
+                const leaderboardEl = document.getElementById('leaderboard');
+                if (!leaderboardEl || !participants) return;
+
+                let sortedParticipants = [...participants];
+                
+                const loggedInUser = sortedParticipants.find(p => p.id === userId);
+                sortedParticipants = loggedInUser ? [loggedInUser, ...sortedParticipants.filter(p => p.id !== userId)] : sortedParticipants;
+                
+                const minutesLeader = [...participants].sort((a, b) => b.minutes - a.minutes)[0] || { minutes: -1, id: null };
+                const weightedLeader = [...participants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
+                
+                // Grid-Layout verwenden, um Probleme mit dem Flex-Wrap zu vermeiden
+                leaderboardEl.innerHTML = `
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${sortedParticipants.map(p => {
+                            const isMinutesLeader = p.id === minutesLeader.id;
+                            const isWeightedLeader = p.id === weightedLeader.id;
+                            const isActiveUser = p.id === displayedUserId;
+                            
+                            return `
+                                <div data-user-id="${p.id}" class="p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary scale-[1.03]' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
+                                    <h3 class="text-xl font-bold mb-2 text-white">
+                                        ${p.nickname}
+                                        ${p.id === userId ? ' (Du)' : ''}
+                                    </h3>
+                                    <div class="space-y-2">
+                                        <div class="p-3 rounded-lg bg-slate-700">
+                                            <div class="text-slate-400 text-sm">Gesammelte Minuten</div>
+                                            <div class="text-2xl font-extrabold ${isMinutesLeader ? 'text-primary' : 'text-white'}">
+                                                ${p.minutes.toFixed(0)}
+                                                ${isMinutesLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
+                                            </div>
+                                        </div>
+                                        <div class="p-3 rounded-lg bg-slate-700">
+                                            <div class="text-slate-400 text-sm">Gewichtete Minuten</div>
+                                            <div class="text-2xl font-extrabold ${isWeightedLeader ? 'text-accent' : 'text-white'}">
+                                                ${p.weightedMinutes.toFixed(1)}
+                                                ${isWeightedLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="text-sm text-slate-500 mt-2">${p.id}</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+
+            function renderSportSummary(myEntries) {
+                const summaryEl = document.getElementById('sport-summary-list');
+                if (!summaryEl || !myEntries) return;
+
+                const sportMinutes = {};
+                myEntries.forEach(entry => {
+                    const sportName = entry.sport;
+                    if (!sportMinutes[sportName]) sportMinutes[sportName] = 0;
+                    sportMinutes[sportName] += entry.minutes;
+                });
+                const sortedSports = Object.keys(sportMinutes).sort((a, b) => sportMinutes[b] - sportMinutes[a]);
+
+                summaryEl.innerHTML = sortedSports.map(sport => `
+                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
+                        <span class="text-white font-semibold">${sport}</span>
+                        <span class="text-primary font-bold">${sportMinutes[sport]} Minuten</span>
+                    </div>
+                `).join('');
+            }
+            
+            function renderRecentActivities(myEntries) {
+                const recentActivitiesEl = document.getElementById('recent-activities');
+                if (!recentActivitiesEl || !myEntries) return;
+                
+                const sortedActivities = myEntries.sort((a, b) => (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) - (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)));
+                
+                recentActivitiesEl.innerHTML = sortedActivities.map(activity => {
+                    const date = activity.timestamp.toDate ? activity.timestamp.toDate() : new Date(activity.timestamp);
+                    const dateString = date.toLocaleDateString('de-DE');
+                    const timeString = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                    const isMyEntry = activity.userId === userId;
+                    
+                    if (isMyEntry && activity.id === editingDocId) {
+                        return `
+                            <div class="flex flex-col p-4 bg-slate-800 rounded-lg border border-primary" data-doc-id="${activity.id}">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-white font-semibold">Eintrag von ${activity.nickname} bearbeiten</span>
+                                    <div class="flex space-x-2">
+                                        <button data-action="save" class="text-xs text-accent hover:text-green-400 transition-colors">Speichern</button>
+                                        <button data-action="cancel" class="text-xs text-secondary hover:text-red-400 transition-colors">Abbrechen</button>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <select id="edit-sport-select" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm">
+                                        ${Object.keys(allSports).map(sport => 
+                                            `<option value="${sport}" ${sport === activity.sport ? 'selected' : ''}>${sport}</option>`
+                                        ).join('')}
+                                    </select>
+                                    <input type="number" id="edit-minutes-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${activity.minutes}" min="1">
+                                    <input type="date" id="edit-date-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]}">
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const actionButtons = isMyEntry ? `
+                            <div class="flex space-x-2">
+                                <button data-action="edit" data-doc-id="${activity.id}" class="text-xs text-slate-400 hover:text-white transition-colors">Bearbeiten</button>
+                                <button data-action="delete" data-doc-id="${activity.id}" class="text-xs text-secondary hover:text-red-400 transition-colors">Löschen</button>
+                            </div>
+                        ` : '';
+                        return `
+                            <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
+                                <div>
+                                    <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Minuten</span>
+                                    <span class="text-accent font-semibold">${activity.sport}</span> gemacht.
+                                </div>
+                                <div class="flex-shrink-0 text-right">
+                                    <span class="text-xs text-slate-500 block mb-1">${dateString} ${timeString}</span>
+                                    ${actionButtons}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }).join('');
+            }
+            
+            // =====================================
+            // Event-Listener Setup
+            // =====================================
+            
+            function setupEventListeners() {
+                document.querySelectorAll('.nav-button').forEach(btn => {
+                    btn.addEventListener('click', () => showSection(btn.dataset.section));
+                });
+
+                document.getElementById('add-entry-form')?.addEventListener('submit', handleFormSubmit);
+                document.getElementById('add-sport-form')?.addEventListener('submit', handleAddSportFormSubmit);
+                document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
+                    myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
+                    renderDashboard();
+                });
+
+                document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        chartTimeframe = btn.dataset.timeframe;
+                        document.querySelectorAll('.timeframe-btn').forEach(b => {
+                            const isSelected = b.dataset.timeframe === chartTimeframe;
+                            b.classList.toggle('bg-primary', isSelected);
+                            b.classList.toggle('hover:bg-blue-700', isSelected);
+                            b.classList.toggle('bg-slate-600', !isSelected);
+                            b.classList.toggle('hover:bg-slate-500', !isSelected);
+                        });
+                        renderDashboard();
+                    });
+                });
+
+                // Event-Delegation für Minuten-Buttons
+                document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
+                    const target = e.target;
+                    const minutesInput = document.getElementById('minutes-input');
+                    if (target.classList.contains('minutes-btn')) {
+                        let currentMinutes = parseInt(minutesInput.value, 10);
+                        currentMinutes += parseInt(target.dataset.minutes, 10);
+                        minutesInput.value = currentMinutes;
+                    } else if (target.id === 'clear-minutes-btn') {
+                        minutesInput.value = '0';
+                    }
+                });
+
+                const sportSelect = document.getElementById('sport-select');
+                if (sportSelect) {
+                    sportSelect.addEventListener('change', () => {
+                        document.getElementById('minutes-input').value = '0';
+                    });
+                }
+
+                // Event-Delegation für die Liste der letzten Aktivitäten
+                document.getElementById('recent-activities')?.addEventListener('click', (e) => {
+                    const target = e.target;
+                    const docId = target.dataset.docId;
+                    const action = target.dataset.action;
+
+                    if (action === 'delete') handleDeleteClick(docId);
+                    else if (action === 'edit') handleEditClick(docId);
+                    else if (action === 'save') handleSaveEdit(docId);
+                    else if (action === 'cancel') handleCancelEdit();
+                });
+
+                // Event-Delegation für die Rangliste
+                document.getElementById('leaderboard')?.addEventListener('click', (e) => {
+                    const target = e.target.closest('[data-user-id]');
+                    if (target) showUserProgress(target.dataset.userId);
+                });
+            }
+            
+            // =====================================
+            // Formular-Handling
+            // =====================================
+            async function handleFormSubmit(e) {
+                e.preventDefault();
+                const sportSelect = document.getElementById('sport-select');
+                const dateInput = document.getElementById('date-input');
+                const minutesInput = document.getElementById('minutes-input');
+                const sport = sportSelect.value;
+                const date = dateInput.value;
+                const minutes = parseInt(minutesInput.value, 10);
+
+                if (minutes > 0 && date && userId && currentUser) {
+                    const newEntry = {
+                        userId: userId,
+                        nickname: currentUser,
+                        sport: sport,
+                        minutes: minutes,
+                        timestamp: new Date(date)
+                    };
+                    
+                    await addSportEntry(newEntry);
+                    
+                    minutesInput.value = '0';
+                    showSection('dashboard');
+                } else {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+            
+            async function handleAddSportFormSubmit(e) {
+                e.preventDefault();
+                const newSportNameInput = document.getElementById('new-sport-name');
+                const newSportWeightInput = document.getElementById('new-sport-weight');
+                const sportName = newSportNameInput.value.trim();
+                const sportWeight = parseFloat(newSportWeightInput.value);
+
+                if (sportName && !isNaN(sportWeight) && sportWeight > 0) {
+                    const userSports = { ...allSports };
+                    userSports[sportName] = sportWeight;
+                    
+                    await saveUserDefinedSports(userSports);
+                    
+                    showToast("Sportart hinzugefügt!", "success");
+                    newSportNameInput.value = '';
+                    newSportWeightInput.value = '';
+                    
+                    await loadAllData();
+                    renderSportWeightList();
+                } else {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Namen und eine positive Zahl für die Gewichtung ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+            
+            // --- CRUD-Funktionen für Einträge ---
+            function handleDeleteClick(docId) {
+                showDynamicModal(
+                    "Eintrag löschen",
+                    "Möchten Sie diesen Eintrag wirklich unwiderruflich löschen?",
+                    [
+                        { id: 'confirm-yes-btn', text: 'Ja', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: async () => {
+                            await deleteSportEntry(docId);
+                            modal.classList.add('hidden');
+                        }},
+                        { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                    ]
+                );
+            }
+
+            function handleEditClick(docId) {
+                editingDocId = docId;
+                renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
+            }
+
+            async function handleSaveEdit(docId) {
+                const editedSport = document.getElementById('edit-sport-select').value;
+                const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
+                const editedDate = document.getElementById('edit-date-input').value;
+                
+                if (editedMinutes > 0 && editedDate) {
+                    const newEntry = {
+                        sport: editedSport,
+                        minutes: editedMinutes,
+                        timestamp: new Date(editedDate),
+                    };
+                    
+                    await updateSportEntry(docId, newEntry);
+                    
+                    editingDocId = null;
+                    renderDashboard();
+                } else {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+
+            function handleCancelEdit() {
+                editingDocId = null;
+                renderDashboard();
+            }
+
+            // =====================================
+            // App-Initialisierung
+            // =====================================
+            async function migrateDataFromLocalStorage(firebaseUid) {
+                appContainer.innerHTML = `<p class="text-center text-slate-400">Migriere lokale Daten...</p>`;
+                
+                const localStorageUserId = localStorage.getItem('userId');
+                const localStorageNickname = localStorage.getItem('nickname');
+                const sportEntriesStr = localStorage.getItem('sportEntries');
+                
+                if (!localStorageUserId || !localStorageNickname || !sportEntriesStr) {
+                    console.warn("Lokalstorage-Daten fehlen. Migration wird übersprungen.");
+                    await checkUserExistsAndLoad();
+                    return;
+                }
+
+                try {
+                    const entriesToMigrate = JSON.parse(sportEntriesStr).filter(entry => 
+                        entry.userId === localStorageUserId && entry.nickname === localStorageNickname
+                    );
+                    
+                    if (entriesToMigrate.length > 0) {
+                        const leaderboardPath = `/artifacts/${appId}/public/data/leaderboard`;
+                        await setDoc(doc(db, leaderboardPath, firebaseUid), { nickname: localStorageNickname, migratedFrom: localStorageUserId }, { merge: true });
+
+                        const privateEntriesPath = `/artifacts/${appId}/users/${firebaseUid}/sportEntries`;
+                        const batchPromises = entriesToMigrate.map(entry => {
+                            const firestoreEntry = {
+                                ...entry,
+                                userId: firebaseUid,
+                                nickname: localStorageNickname,
+                                timestamp: new Date(entry.timestamp)
+                            };
+                            return addDoc(collection(db, privateEntriesPath), firestoreEntry);
+                        });
+                        await Promise.all(batchPromises);
+
+                        const userDefinedSportsStr = localStorage.getItem('userDefinedSports');
+                        if (userDefinedSportsStr) {
+                            const sports = JSON.parse(userDefinedSportsStr);
+                            const privateSportsPath = `/artifacts/${appId}/users/${firebaseUid}/userDefinedSports/sportsDoc`;
+                            await setDoc(doc(db, privateSportsPath), { sports });
+                        }
+                    
+                        showToast("Lokale Daten erfolgreich migriert!", "success");
+                    } else {
+                         console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
+                    }
+                    
+                    localStorage.removeItem('userId');
+                    localStorage.removeItem('nickname');
+                    localStorage.removeItem('sportEntries');
+                    localStorage.removeItem('userDefinedSports');
+
+                } catch (error) {
+                    console.error("Fehler bei der Migration:", error);
+                    showDynamicModal("Migrationsfehler", "Ein Fehler ist bei der Datenmigration aufgetreten. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+                finally {
+                    await loadAllData();
+                }
+            }
+
+            async function checkUserExistsAndLoad() {
+                const userDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId);
+                try {
+                    const userDoc = await getDoc(userDocRef);
+                    if (userDoc.exists()) {
+                        currentUser = userDoc.data().nickname;
+                        await loadAllData();
+                        renderApp();
+                    } else {
+                        renderNicknameForm();
+                    }
+                } catch (error) {
+                    console.error("Fehler beim Laden der Benutzerdaten:", error);
+                    showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+            
+            async function startApp() {
+                if (!app) {
+                    showConfigModal();
+                    return;
+                }
+
+                if (!auth || !db) {
+                    console.error("Firebase Auth oder Firestore Instanz nicht initialisiert.");
+                    showDynamicModal("Initialisierungsfehler", "Firebase konnte nicht richtig geladen werden. Überprüfen Sie Ihre Konfiguration.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+                
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error('Authentifizierungsfehler:', error);
+                    showDynamicModal("Authentifizierungsfehler", "Konnte mich nicht anmelden. Bitte überprüfen Sie Ihre Internetverbindung.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+
+                userId = auth.currentUser.uid;
+                displayedUserId = userId;
+
+                const hasLocalData = localStorage.getItem('userId') && localStorage.getItem('sportEntries');
+                if (hasLocalData) {
+                    await migrateDataFromLocalStorage(userId);
+                } else {
+                    await checkUserExistsAndLoad();
+                }
+            }
+
+            startApp();
+        })();
+    </script>
 </head>
 <body class="p-4 sm:p-8">
     <!-- Hauptcontainer für die gesamte App -->
