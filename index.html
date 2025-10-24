@@ -53,6 +53,14 @@
                 opacity: .5;
             }
         }
+        /* Custom style für den Soll-Marker */
+        .target-marker {
+            width: 3px; 
+            background-color: #ef4444; /* secondary (red) */
+            border-radius: 9999px; /* rounded-full */
+            box-shadow: 0 0 5px rgba(239, 68, 68, 0.8);
+            z-index: 10; /* Stellt sicher, dass der Marker über dem Balken ist */
+        }
     </style>
 
     <script type="module">
@@ -69,10 +77,18 @@
             'Step Aerobic': 1.6,
             'HIIT': 1.7,
             'Kayaking': 1.1,
+            // Neue Sportarten hinzugefügt
+            'Schwertkampf': 1.6, 
+            'Taekwondo': 1.7,
             'Andere': 1.0
         };
         const GOAL_MINUTES = 8000;
         
+        // Zieldaten für die Soll-Berechnung
+        const GOAL_START_DATE = new Date('2025-09-01T00:00:00Z');
+        const GOAL_END_DATE = new Date('2026-09-01T00:00:00Z');
+        const TOTAL_DURATION_MS = GOAL_END_DATE.getTime() - GOAL_START_DATE.getTime(); // 365 Tage in Millisekunden
+
         const appContainer = document.getElementById('app-container');
         const modal = document.getElementById('message-modal');
         const modalContentWrapper = document.getElementById('modal-content-wrapper');
@@ -361,9 +377,11 @@
                                 </button>
                             </div>
                             
-                            <!-- Fortschrittsbalken -->
-                            <div class="h-6 bg-slate-800 rounded-full overflow-hidden mb-4 shadow-inner">
+                            <!-- Fortschrittsbalken (Relative Positionierung für den Marker hinzugefügt) -->
+                            <div class="relative h-6 bg-slate-800 rounded-full mb-4 shadow-inner overflow-hidden">
                                 <div id="progress-bar" class="h-full bg-accent progress-bar-fill rounded-full" style="width: 0%;"></div>
+                                <!-- Marker für den Soll-Fortschritt -->
+                                <div id="target-marker" class="absolute top-0 bottom-0 target-marker" title="Soll-Fortschritt"></div>
                             </div>
                             <p id="progress-text" class="text-center text-sm font-semibold text-slate-400"></p>
                             
@@ -470,9 +488,9 @@
                 btn.classList.toggle('hover:bg-slate-500', !isSelected);
             });
 
-            document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
-            document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
-            document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
+            document.getElementById('dashboard-section')?.classList.toggle('hidden', sectionId !== 'dashboard');
+            document.getElementById('add-entry-section')?.classList.toggle('hidden', sectionId !== 'add-entry');
+            document.getElementById('add-sport-section')?.classList.toggle('hidden', sectionId !== 'add-sport');
         }
         
         // =====================================
@@ -484,7 +502,8 @@
             const sportSelect = document.getElementById('sport-select');
             if (sportSelect) {
                 sportSelect.innerHTML = Object.keys(allSports).map(sport => 
-                    `<option value="${sport}">${sport}</option>`
+                    // Anzeige der Gewichtung im Dropdown
+                    `<option value="${sport}">${sport} (x${allSports[sport]})</option>`
                 ).join('');
             }
         }
@@ -493,13 +512,37 @@
         function renderSportWeightList() {
             const sportWeightListEl = document.getElementById('sport-weight-list');
             if (!sportWeightListEl) return;
+
+            const userDefinedSports = loadSports();
             
-            sportWeightListEl.innerHTML = Object.entries(allSports).map(([sport, weight]) => `
-                <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
-                    <span class="text-white font-semibold">${sport}</span>
-                    <span class="text-primary font-bold">Gewichtung: ${weight}</span>
-                </div>
-            `).join('');
+            sportWeightListEl.innerHTML = Object.entries(allSports).map(([sport, weight]) => {
+                const isCustom = userDefinedSports.hasOwnProperty(sport);
+                
+                // Button nur für benutzerdefinierte Sportarten anzeigen
+                const deleteButton = isCustom ? `
+                    <button data-sport-name="${sport}" data-action="delete-sport" class="text-secondary hover:text-red-400 transition-colors text-sm font-semibold p-1 rounded-lg">
+                        Löschen
+                    </button>
+                ` : `<span class="text-slate-500 text-sm">Standard</span>`;
+
+                return `
+                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600 ${isCustom ? 'border-primary' : ''}">
+                        <span class="text-white font-semibold">${sport}</span>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-primary font-bold">x${weight}</span>
+                            ${deleteButton}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+             // Event-Delegation für den Lösch-Button
+            sportWeightListEl.querySelectorAll('[data-action="delete-sport"]').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const sportName = e.target.dataset.sportName;
+                    handleDeleteSport(sportName);
+                });
+            });
         }
 
         /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
@@ -522,9 +565,34 @@
             const myProgressValueEl = document.getElementById('my-progress-value');
             const progressBarEl = document.getElementById('progress-bar');
             const progressTextEl = document.getElementById('progress-text');
+            const targetMarkerEl = document.getElementById('target-marker');
 
-            if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !data) return;
 
+            if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !data || !targetMarkerEl) return;
+
+            // --- NEUE BERECHNUNG: Soll-Fortschritt (Time-based target) ---
+            const now = new Date();
+            const elapsedTimeMs = now.getTime() - GOAL_START_DATE.getTime();
+            
+            let requiredProgressPercentage = 0;
+            let requiredMinutes = 0;
+
+            if (elapsedTimeMs > 0 && TOTAL_DURATION_MS > 0) {
+                // Begrenze die Soll-Berechnung auf 100% (auch wenn die aktuelle Zeit darüber liegt)
+                const clampedElapsedTimeMs = Math.min(elapsedTimeMs, TOTAL_DURATION_MS); 
+                requiredProgressPercentage = (clampedElapsedTimeMs / TOTAL_DURATION_MS) * 100;
+                requiredMinutes = (requiredProgressPercentage / 100) * GOAL_MINUTES;
+            } else if (elapsedTimeMs >= TOTAL_DURATION_MS) {
+                // Nach dem Enddatum ist der Soll-Wert 100%
+                requiredProgressPercentage = 100;
+                requiredMinutes = GOAL_MINUTES;
+            } else {
+                // Vor dem Startdatum
+                requiredProgressPercentage = 0;
+                requiredMinutes = 0;
+            }
+
+            // --- VORHANDENE BERECHNUNG: Ist-Fortschritt (Actual progress) ---
             const myEntries = data.filter(entry => entry.userId === displayedUserId);
             const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
             const totalWeightedMinutes = myEntries.reduce((sum, entry) => {
@@ -534,12 +602,26 @@
 
             let displayValue = (myProgressView === 'minutes') ? totalMinutes : totalWeightedMinutes;
             let progress = (displayValue / GOAL_MINUTES) * 100;
-            
-            myProgressLabelEl.textContent = (myProgressView === 'minutes') ? 'Gesammelte Minuten' : 'Gewichtete Minuten';
-            myProgressValueEl.textContent = displayValue.toFixed(myProgressView === 'weighted' ? 1 : 0);
-            progressBarEl.style.width = `${Math.min(100, progress)}%`;
-            progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}%`;
 
+            // --- UI-AKTUALISIERUNG ---
+
+            progressBarEl.style.width = `${Math.min(100, progress)}%`;
+            
+            // Marker aktualisieren
+            targetMarkerEl.style.left = `${requiredProgressPercentage}%`;
+            targetMarkerEl.style.transform = `translateX(-50%)`;
+            targetMarkerEl.title = `Soll-Fortschritt: ${requiredMinutes.toFixed(0)} Minuten (${requiredProgressPercentage.toFixed(1)}%)`;
+
+            // Text aktualisieren
+            if (myProgressView === 'minutes') {
+                 progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}% | Soll: ${requiredProgressPercentage.toFixed(1)}% (${requiredMinutes.toFixed(0)} Min)`;
+            } else {
+                 // Die Soll-Anzeige basiert immer auf ungewichteten Minuten, da es ein Zeit-Ziel ist.
+                 progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}% (Gewichtet) | Soll (Ungewichtet): ${requiredProgressPercentage.toFixed(1)}% (${requiredMinutes.toFixed(0)} Min)`;
+            }
+
+
+            // Visuelle Zustände (Ziel erreicht, etc.)
             if (progress >= 100) {
                 progressBarEl.classList.remove('bg-accent');
                 progressBarEl.classList.add('bg-primary', 'animate-pulse-slow');
@@ -679,14 +761,19 @@
 
             let participantArray = Object.values(participants);
 
+            // NEUE SORTIERLOGIK: Nach gesammelten (ungewichteten) Minuten absteigend sortieren
             participantArray.sort((a, b) => b.minutes - a.minutes);
+            
             const minutesLeader = participantArray[0] || { minutes: -1, userId: null };
-            participantArray.sort((a, b) => b.weightedMinutes - a.weightedMinutes);
-            const weightedLeader = participantArray[0] || { weightedMinutes: -1, userId: null };
+            // Finde den gewichteten Leader, ohne die Sortierung für die Anzeige zu ändern
+            const weightedLeader = [...participantArray].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, userId: null };
 
             const loggedInUser = participantArray.find(p => p.userId === userId);
-            let sortedParticipants = loggedInUser ? [loggedInUser, ...participantArray.filter(p => p.userId !== userId)] : participantArray;
-
+            // Die Rangliste bleibt nach Minuten sortiert. Wenn der eingeloggte Nutzer nicht an erster Stelle steht,
+            // wird er trotzdem vor anderen Teilnehmern angezeigt, um seine Position hervorzuheben.
+            // Behalte die sortierte Liste bei, aber stelle sicher, dass der aktuelle Nutzer immer dabei ist.
+            let sortedParticipants = participantArray; 
+            
             leaderboardEl.innerHTML = `
                 <div class="flex flex-col sm:flex-row gap-4">
                     ${sortedParticipants.map(p => {
@@ -750,14 +837,27 @@
             if (!recentActivitiesEl || !data) return;
 
             const displayedActivities = data.filter(entry => entry.userId === displayedUserId);
+            // Sortiere nach Zeitstempel (neueste zuerst)
             const sortedActivities = displayedActivities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
-            recentActivitiesEl.innerHTML = sortedActivities.map(activity => {
+            // Begrenze auf die 5 neuesten Aktivitäten
+            const limitedActivities = sortedActivities.slice(0, 5);
+
+            if (limitedActivities.length === 0) {
+                recentActivitiesEl.innerHTML = '<p class="text-center text-slate-400 p-4">Keine Aktivitäten gefunden. Trage deine erste Sportart ein!</p>';
+                return;
+            }
+
+            recentActivitiesEl.innerHTML = limitedActivities.map(activity => {
                 const date = new Date(activity.timestamp);
                 const dateString = date.toLocaleDateString('de-DE');
                 const timeString = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
                 const isMyEntry = activity.userId === userId;
                 
+                // Füge die Gewichtung hier hinzu
+                const weight = allSports[activity.sport] || 1.0;
+                const weightedMinutes = (activity.minutes * weight).toFixed(1);
+
                 // Nutze den Zeitstempel als eindeutige ID für die Bearbeitung
                 if (isMyEntry && activity.timestamp === editingTimestamp) {
                     return `
@@ -772,7 +872,8 @@
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                 <select id="edit-sport-select" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm">
                                     ${Object.keys(allSports).map(sport => 
-                                        `<option value="${sport}" ${sport === activity.sport ? 'selected' : ''}>${sport}</option>`
+                                        // Anzeige der Gewichtung im Bearbeitungs-Dropdown
+                                        `<option value="${sport}" ${sport === activity.sport ? 'selected' : ''}>${sport} (x${allSports[sport]})</option>`
                                     ).join('')}
                                 </select>
                                 <input type="number" id="edit-minutes-input" class="w-full p-2 rounded-lg bg-slate-700 text-white text-sm" value="${activity.minutes}" min="1">
@@ -790,7 +891,8 @@
                     return `
                         <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
                             <div>
-                                <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Minuten</span>
+                                <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Min</span>
+                                (<span class="text-accent font-semibold">${weightedMinutes} gew. Min</span>, x${weight}) mit
                                 <span class="text-accent font-semibold">${activity.sport}</span> gemacht.
                             </div>
                             <div class="flex-shrink-0 text-right">
@@ -801,8 +903,37 @@
                     `;
                 }
             }).join('');
+            
+            // Füge eine Notiz hinzu, falls mehr Einträge vorhanden sind
+            if (sortedActivities.length > 5) {
+                recentActivitiesEl.innerHTML += '<p class="text-center text-slate-500 mt-4 text-sm">... Es werden nur die neuesten 5 Aktivitäten angezeigt.</p>';
+            }
         }
         
+        /** Löscht eine benutzerdefinierte Sportart und entfernt alle zugehörigen Einträge. */
+        function handleDeleteSport(sportName) {
+            showDynamicModal(
+                "Sportart löschen",
+                `Möchten Sie die Sportart "${sportName}" und ALLE ZUGEHÖRIGEN EINTRAEGE unwiderruflich löschen?`,
+                [
+                    { id: 'confirm-yes-btn', text: 'Ja, löschen', class: 'bg-secondary text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition-colors', onClick: () => {
+                        const userSports = loadSports();
+                        delete userSports[sportName];
+                        saveSports(userSports);
+
+                        // Auch die Einträge im Hauptdatensatz löschen, um Inkonsistenzen zu vermeiden
+                        const currentEntries = loadData();
+                        const updatedEntries = currentEntries.filter(entry => entry.sport !== sportName);
+                        saveData(updatedEntries);
+
+                        loadSportsAndData(); // Lädt neu und aktualisiert die UI
+                        modal.classList.add('hidden');
+                    }},
+                    { id: 'confirm-no-btn', text: 'Nein', class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', onClick: () => modal.classList.add('hidden') }
+                ]
+            );
+        }
+
         // =====================================
         // Event-Listener Setup
         // =====================================
@@ -917,8 +1048,15 @@
 
             if (sportName && !isNaN(sportWeight) && sportWeight > 0) {
                 const userSports = loadSports();
+                // Prüfen, ob die Sportart bereits existiert (entweder Standard oder benutzerdefiniert)
+                if (allSports.hasOwnProperty(sportName)) {
+                    showDynamicModal("Fehler", "Diese Sportart existiert bereits.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+
                 userSports[sportName] = sportWeight;
                 saveSports(userSports);
+                // Wichtig: allSports muss neu geladen werden, bevor die UI aktualisiert wird
                 allSports = { ...SPORT_WEIGHTS, ...userSports };
                 
                 renderSportSelect();
@@ -977,6 +1115,7 @@
                 return;
             }
 
+            // Hole den Wert aus dem Dropdown. Der Wert ist immer der Sportname.
             const editedSport = document.getElementById('edit-sport-select').value;
             const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
             const editedDate = document.getElementById('edit-date-input').value;
@@ -1009,10 +1148,11 @@
                 { userId: 'max_id', nickname: 'Max', sport: 'Laufen', minutes: 60, timestamp: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString() },
                 { userId: 'max_id', nickname: 'Max', sport: 'Krafttraining', minutes: 45, timestamp: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString() },
                 { userId: 'max_id', nickname: 'Max', sport: 'Schwimmen', minutes: 30, timestamp: now.toISOString() },
-                { userId: 'max_id', nickname: 'Max', sport: 'Wandern', minutes: 120, timestamp: now.toISOString() },
+                { userId: 'max_id', nickname: 'Max', sport: 'Wandern', minutes: 120, timestamp: new Date(now.getTime() - 12 * 24 * 60 * 60 * 1000).toISOString() },
                 { userId: 'lisa_id', nickname: 'Lisa', sport: 'Yoga', minutes: 90, timestamp: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString() },
                 { userId: 'lisa_id', nickname: 'Lisa', sport: 'Radfahren', minutes: 180, timestamp: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString() },
-                { userId: 'lisa_id', nickname: 'Lisa', sport: 'Fußball', minutes: 75, timestamp: now.toISOString() }
+                // Füge einen Eintrag für eine benutzerdefinierte Sportart hinzu, falls sie existiert
+                { userId: 'lisa_id', nickname: 'Lisa', sport: 'HIIT', minutes: 75, timestamp: now.toISOString() }
             ];
             
             saveData(dummyData);
