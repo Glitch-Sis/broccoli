@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sport Challenge App</title>
     <!-- Tailwind CSS CDN für das Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -121,15 +121,6 @@
             visibility: visible;
             opacity: 1;
         }
-        /* Mobile-spezifische Anpassung für das Datumsfeld */
-        @media (max-width: 640px) {
-            input[type="date"] {
-                /* Stellt sicher, dass das Feld nicht breiter als der Container wird */
-                width: 100%; 
-                /* Verhindert, dass der Kalender-Button den Platz sprengt */
-                box-sizing: border-box; 
-            }
-        }
     </style>
 
     <!-- Firebase JS SDKs -->
@@ -142,7 +133,7 @@
             // =====================================
             // Globale Variablen und UI-Elemente
             // =====================================
-            const APP_VERSION = '1.3.1'; // NEU: App-Versionsnummer
+            const APP_VERSION = '1.3.1'; // App-Versionsnummer
 
             const SPORT_WEIGHTS = {
                 'Laufen': 1.5,
@@ -610,7 +601,7 @@
                                     </div>
                                     <div>
                                         <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
-                                        <!-- KORREKTUR: w-full für Mobilgeräte -->
+                                        <!-- KORRIGIERT: w-full ist nun korrekt gesetzt -->
                                         <input type="date" id="date-input" class="p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary w-full">
                                     </div>
                                     <div>
@@ -662,7 +653,7 @@
                                 <section class="mb-8">
                                     <h2 class="text-2xl font-bold text-primary mb-4 flex justify-between items-center">
                                         Über die App
-                                        <span class="text-sm text-slate-400">Version ${APP_VERSION}</span> 
+                                        <!-- VERSIONSINFO ENTFERNT -->
                                     </h2>
                                     <div class="space-y-4 text-slate-300">
                                         <p>Hey! Diese App ist dein persönlicher Motivator für die Sport Challenge 2025/26. Dein Ziel: Halte deinen sportlichen Fortschritt fest, messe dich mit Freunden und erreiche die Gesundheitsziele der WHO.</p>
@@ -1092,30 +1083,34 @@
                     
                     strengthCounter = `
                         <div class="mt-6 p-4 rounded-xl bg-slate-800 border border-slate-600">
-                            <div class="flex justify-between items-start">
-                                <!-- NEUE STRUKTUR FÜR MOBILE OPTIMIERUNG -->
-                                <div class="w-full">
-                                    <div class="flex justify-between items-center mb-2">
-                                        <div class="relative tooltip-container">
-                                            <h3 class="text-lg font-bold text-white flex items-center">
-                                                Krafttraining
-                                                <span class="ml-2 text-primary cursor-pointer text-sm">
-                                                    [i]
-                                                    <span class="tooltip-content text-xs">${strengthTooltipContent}</span>
-                                                </span>
-                                            </h3>
-                                        </div>
-                                        <span class="text-sm text-slate-400">Soll: 2x/Woche</span>
+                            <!-- NEUE STRUKTUR FÜR MOBILE OPTIMIERUNG -->
+                            <div class="w-full space-y-2">
+                                <!-- Zeile 1: Überschrift und Info-Icon -->
+                                <div class="flex justify-between items-center">
+                                    <div class="relative tooltip-container">
+                                        <h3 class="text-lg font-bold text-white flex items-center">
+                                            Krafttraining
+                                            <span class="ml-2 text-primary cursor-pointer text-sm">
+                                                [i]
+                                                <span class="tooltip-content text-xs">${strengthTooltipContent}</span>
+                                            </span>
+                                        </h3>
                                     </div>
-                                    
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-white text-xl font-extrabold">
-                                            <span class="text-white">${actualDays.toFixed(0)}</span> / ${requiredDays.toFixed(1)} Tage erreicht
-                                        </span>
-                                        <div class="px-3 py-1 rounded-full text-white font-semibold ${isGoalMet ? 'bg-accent' : 'bg-secondary'} text-sm">
-                                            ${isGoalMet ? 'Im Zeitplan!' : 'Aufholen nötig'}
-                                        </div>
+                                </div>
+
+                                <!-- Zeile 2: Sollwert und Status (linksbündig) -->
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-slate-400">Soll: 2x/Woche</span>
+                                    <div class="px-3 py-1 rounded-full text-white font-semibold ${isGoalMet ? 'bg-accent' : 'bg-secondary'} text-sm">
+                                        ${isGoalMet ? 'Im Zeitplan!' : 'Aufholen nötig'}
                                     </div>
+                                </div>
+                                
+                                <!-- Zeile 3: Aktuelle Leistung (groß und sichtbar) -->
+                                <div class="pt-2">
+                                    <span class="text-white text-xl font-extrabold">
+                                        ${actualDays.toFixed(0)} / ${requiredDays.toFixed(1)} Tage erreicht
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -1777,5 +1772,6 @@
     </footer>
 </body>
 </html>
+
 
 
