@@ -74,7 +74,7 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         .toast-success { background-color: #22c55e; }
-        .toast-error { background-color: #f59e0b; } /* NEU: Amber/Gelb */
+        .toast-error { background-color: #f59e0b; }
         .toast-info { background-color: #3b82f6; }
         @keyframes fadeinout {
             0% { opacity: 0; transform: translateY(20px); }
@@ -85,16 +85,16 @@
         /* Custom style für den Soll-Marker */
         .target-marker {
             width: 3px; 
-            background-color: #f59e0b; /* NEU: Amber/Gelb */
+            background-color: #f59e0b; /* Amber/Gelb */
             border-radius: 9999px; /* rounded-full */
-            box-shadow: 0 0 5px rgba(245, 158, 11, 0.8); /* NEU: passender Schatten */
-            z-index: 10; /* Stellt sicher, dass der Marker über dem Balken ist */
-            position: absolute; /* Muss relativ zum Eltern-Div sein */
+            box-shadow: 0 0 5px rgba(245, 158, 11, 0.8);
+            z-index: 10;
+            position: absolute;
             top: 0;
             bottom: 0;
             height: 100%;
         }
-        /* NEU: Tooltip-Stil für die Sportarten-Liste (behalten für den Krafttraining-Counter) */
+        /* Tooltip-Stil für die Sportarten-Liste */
         .tooltip-container {
             position: relative;
             display: inline-block;
@@ -113,7 +113,6 @@
             transform: translateX(-50%);
             opacity: 0;
             transition: opacity 0.3s;
-            /* Korrektur: Erlaube Umbruch und setze maximale Breite */
             white-space: normal;
             max-width: 250px; 
         }
@@ -122,14 +121,14 @@
             opacity: 1;
         }
 
-        /* NEU: Collapsible styles */
+        /* Collapsible styles */
         .collapsible-content {
             max-height: 0;
             overflow: hidden;
             transition: max-height 0.5s ease-in-out;
         }
         .collapsible-content-expanded {
-            max-height: 2000px; /* Großer Wert, um den Inhalt aufzunehmen */
+            max-height: 9999px; /* ERHÖHT für Coach-Inhalt */
         }
         .toggle-icon {
             transition: transform 0.3s ease-in-out;
@@ -154,8 +153,7 @@
             // =====================================
             // Globale Variablen und UI-Elemente
             // =====================================
-            const APP_VERSION = '1.3.1'; // App-Versionsnummer
-
+            
             const SPORT_WEIGHTS = {
                 'Laufen': 1.5,
                 'Schwimmen': 1.8,
@@ -166,7 +164,6 @@
                 'Step Aerobic': 1.6,
                 'HIIT': 1.7,
                 'Kayaking': 1.1,
-                // Hinzugefügt
                 'Schwertkampf': 1.6, 
                 'Taekwondo': 1.7,
                 'Andere': 1.0
@@ -191,7 +188,6 @@
             let chartTimeframe = 'week';
             let allSports = { ...SPORT_WEIGHTS };
             let editingDocId = null;
-            let isAppReady = false;
 
             // Speichert die aktuell geladenen Daten
             let entries = [];
@@ -318,7 +314,7 @@
                 try {
                     const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                     await addDoc(collection(db, privateEntriesPath), entry);
-                    // Nach Hinzufügen: Startdatum neu berechnen, falls es der erste Eintrag war
+                    // Nach Hinzufügen: Leaderboard-Statistiken aktualisieren
                     await updateLeaderboardStats(userId, currentUser);
                     showToast("Sporteintrag hinzugefügt!", "success");
                     await loadAllData();
@@ -391,6 +387,7 @@
                     const privateSportsPath = `/artifacts/${appId}/users/${userId}/userDefinedSports/sportsDoc`;
                     // Speichert nur die benutzerdefinierten Sportarten
                     await setDoc(doc(db, privateSportsPath), { sports });
+                    
                     // allSports neu laden
                     allSports = { ...SPORT_WEIGHTS, ...sports };
                 } catch (e) {
@@ -490,7 +487,7 @@
                     appContainer.innerHTML = `<p class="text-center text-slate-400">Lade App-Daten...</p>`;
                     entries = await getSportEntries(userId);
 
-                    // NEU: Setze das Challenge-Startdatum für den eingeloggten Benutzer
+                    // Setze das Challenge-Startdatum für den eingeloggten Benutzer
                     userChallengeStartDate = getChallengePeriod(entries).startDate;
 
                     // Lade benutzerdefinierte Sportarten und füge sie zu den Standard-Sportarten hinzu
@@ -558,7 +555,7 @@
                     if (nickname) {
                         currentUser = nickname;
                         
-                        // *** KORRIGIERT: Setze Initialwerte für Leaderboard-Felder ***
+                        // Setze Initialwerte für Leaderboard-Felder
                         await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { 
                             nickname: currentUser,
                             minutes: 0,
@@ -567,7 +564,6 @@
                         }, { merge: true });
                         
                         await loadAllData();
-                        isAppReady = true;
                         renderApp();
                     } else {
                         showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
@@ -577,10 +573,8 @@
 
             /** Rendert die Haupt-App. */
             function renderApp() {
-                // NEU: Entferne die globale Profil-Sektion, da sie nun in der App-Sektion liegt
-                document.getElementById('profile-section')?.classList.add('hidden');
-
-                const { startDate, endDate } = getChallengePeriod(entries); // Holen Sie das Challenge-Enddatum des Benutzers
+                // Das Challenge-Enddatum des Benutzers holen
+                const { startDate, endDate } = getChallengePeriod(entries); 
 
                 appContainer.innerHTML = `
                     <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
@@ -594,7 +588,7 @@
                         <!-- Abschnitt für das Dashboard -->
                         <div id="dashboard-section" class="space-y-6">
                             
-                            <!-- Teilnehmer Abschnitt (Rangliste, AN DIE SPITZE VERSCHOBEN) -->
+                            <!-- Teilnehmer Abschnitt (Rangliste) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
                                 <h2 id="dashboard-title" class="text-xl sm:text-2xl font-bold text-white mb-4">Rangliste</h2>
                                 <div id="leaderboard" class="space-y-4">
@@ -604,7 +598,7 @@
                             
                             <!-- Fortschritt Abschnitt (8.000 Min) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-xl sm:text-2xl font-bold text-primary mb-4">Dein Basis Ziel (WHO gesund aktiv)</h2> <!-- GEÄNDERT: Neue Überschrift -->
+                                <h2 class="text-xl sm:text-2xl font-bold text-primary mb-4">Dein Basis Ziel (WHO gesund aktiv)</h2>
                                 <div id="progress-8000-content"></div> 
                             </div>
                             
@@ -677,8 +671,8 @@
                                     </div>
                                     <div>
                                         <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
-                                        <!-- KORRIGIERT: w-full Klasse nach vorne verschoben für konsistente Breite -->
-                                        <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                        <!-- Korrektur für mobile Darstellung (iOS/iPhone) -->
+                                        <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary appearance-none">
                                     </div>
                                     <div>
                                         <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
@@ -729,7 +723,6 @@
                                 <section class="mb-8">
                                     <h2 class="text-2xl font-bold text-primary mb-4 flex justify-between items-center">
                                         Über die App
-                                        <!-- VERSIONSINFO ENTFERNT -->
                                     </h2>
                                     <div class="space-y-4 text-slate-300">
                                         <p>Hey! Diese App ist dein persönlicher Motivator für die Sport Challenge 2025/26. Dein Ziel: Halte deinen sportlichen Fortschritt fest, messe dich mit Freunden und erreiche die Gesundheitsziele der WHO.</p>
@@ -756,10 +749,10 @@
                                     <h2 class="text-xl sm:text-2xl font-bold text-white mb-3">Dein Profil</h2>
                                     <h3 class="text-xl font-bold text-white mb-2 sm:mb-0">Spitzname: <span class="text-primary" id="profile-nickname-section"></span></h3>
                                     
-                                    <!-- NEUE ANZEIGE DES INDIVIDUELLEN STARTDATUMS -->
+                                    <!-- ANZEIGE DES INDIVIDUELLEN STARTDATUMS -->
                                     <p class="text-sm text-slate-400 mt-2">
                                         Challenge Start: <span class="text-white font-semibold" id="challenge-start-date">${userChallengeStartDate.toLocaleDateString('de-DE')}</span>
-                                        (Ende: <span class="text-white font-semibold">${getChallengePeriod(entries).endDate.toLocaleDateString('de-DE')}</span>)
+                                        (Ende: <span class="text-white font-semibold">${endDate.toLocaleDateString('de-DE')}</span>)
                                     </p>
 
                                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4">
@@ -905,6 +898,7 @@
                 
                 // Nach dem Rendern die max-height neu setzen, falls die Sektion bereits offen war
                 if (contentEl.classList.contains('collapsible-content-expanded')) {
+                    // Erneutes Setzen der scrollHeight, um den neuen Inhalt zu berücksichtigen (Wichtig für Coach Fix)
                     contentEl.style.maxHeight = contentEl.scrollHeight + "px";
                 }
             }
@@ -915,7 +909,7 @@
             }
             
             // =====================================
-            // NEU: Collapsible Logic
+            // Collapsible Logic
             // =====================================
 
             function setupCollapsibleListeners() {
@@ -955,14 +949,15 @@
 
                     // Expand Animation starten
                     contentEl.classList.add('collapsible-content-expanded');
-                    contentEl.style.maxHeight = contentEl.scrollHeight + "px";
+                    // Wichtig: setze max-height nach dem Rendern, um die korrekte Scroll-Höhe zu erhalten (Coach Fix)
+                    contentEl.style.maxHeight = contentEl.scrollHeight + "px"; 
                     icon.classList.add('toggle-icon-rotated');
                     icon.textContent = '▲';
                 }
             }
             
             // =====================================
-            // NEU: Leaderboard Interaktion
+            // Leaderboard Interaktion
             // =====================================
 
             /** Stellt den Fortschritt für einen bestimmten Benutzer in der Ansicht dar */
@@ -997,17 +992,15 @@
             }
 
             // =====================================
-            // Personal Coach Modul (Geteilt)
+            // Personal Coach Modul
             // =====================================
             
-            // ... [COACH_ICONS bleibt unverändert] ...
-
             /** * Hilfsfunktion zur Berechnung des Soll-Fortschritts für die Minuten. 
-             * @param {number} goalMinutes - Das gesamte Minuten-Ziel (8000 oder 15000).
-             * @param {Date} startDate - Das Challenge Startdatum.
-             * @param {Date} endDate - Das Challenge Enddatum.
-             * @returns {{requiredProgressPercentage: number, requiredMinutes: number}}
-             */
+              * @param {number} goalMinutes - Das gesamte Minuten-Ziel (8000 oder 15000).
+              * @param {Date} startDate - Das Challenge Startdatum.
+              * @param {Date} endDate - Das Challenge Enddatum.
+              * @returns {{requiredProgressPercentage: number, requiredMinutes: number}}
+              */
             function calculateRequiredProgress(goalMinutes, startDate, endDate) {
                 const now = new Date();
                 const totalDurationMs = endDate.getTime() - startDate.getTime();
@@ -1101,10 +1094,9 @@
                     // --- Coach Active (Fokus: 8k Minuten) ---
                     if (progress8k >= 100) {
                         adviceHeadline = "Ziel A erreicht! Du bist bereits fit.";
-                        adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein Basis-Ziel von 8.000 Minuten bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Stretch Goal anzuvisieren.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein **Basis-Ziel von 8.000 Minuten** bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Stretch Goal anzuvisieren.</p>`;
                     } else if (minutesLag8k > 5) {
                         adviceHeadline = "Aufholen nötig: WHO aktiv Ziel in Gefahr.";
-                        // GEÄNDERT: text-secondary für Warnungen
                         adviceTextHtml = `<p class="text-slate-300">Du bist im Rückstand! Der Plan läuft dir mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Hol dir deine Basis-Gesundheit zurück. Konzentriere dich auf Regelmäßigkeit.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${getTopSport()}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
@@ -1117,7 +1109,6 @@
                     // --- Coach Fit (Fokus: Krafttraining + 15k Minuten) ---
                     if (strengthLag > 10) {
                         adviceHeadline = "Dringend: Krafttraining nachholen!";
-                        // GEÄNDERT: text-secondary für Warnungen
                         adviceTextHtml = `<p class="text-slate-300">Deine Ausdauer ist super, aber dein Krafttraining vernachlässigst du. Du liegst um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span> hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Starte diese Woche mit <span class="font-bold">zwei 15-minütigen</span> Yoga- oder Krafttrainingseinheiten (z.B. HIIT). Priorität: Kraft!</p>`;
@@ -1126,7 +1117,6 @@
                         adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Du hast das anspruchsvolle 15.000-Minuten-Stretch Goal erreicht. Du bist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
                     } else if (minutesLag15k > 5) {
                         adviceHeadline = "Top-Ziel in Sicht: Intensität erhöhen.";
-                        // GEÄNDERT: text-secondary für Warnungen
                         adviceTextHtml = `<p class="text-slate-300">Du bist auf dem Weg, aber das 15.000-Minuten-Ziel läuft dir mit <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span> Vorsprung davon. Du musst mehr Minunten pro Woche sammeln, um aufzuholen.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und füge eine <span class="font-bold">zweite Session</span> pro Woche ein.</p>`;
@@ -1153,20 +1143,16 @@
             /** Rendert den Coach für das WHO aktiv Ziel (8k). */
             function renderCoachActiveGoal(myEntries) {
                 const container = document.getElementById('coach-active-container');
-                if (!container || displayedUserId !== userId) {
-                    if (container) container.innerHTML = ''; // Entferne Coach für andere Nutzer
-                    return;
-                }
+                if (!container) return; // Nur prüfen, ob der Container existiert
+                // Coach wird für den aktuell angezeigten User gerendert (Fix 1)
                 container.innerHTML = generateCoachAdviceHtml('active', myEntries);
             }
 
             /** Rendert den Coach für das WHO fit & stark Ziel (15k + Kraft). */
             function renderCoachFitGoal(myEntries) {
                 const container = document.getElementById('coach-fit-container');
-                if (!container || displayedUserId !== userId) {
-                    if (container) container.innerHTML = ''; // Entferne Coach für andere Nutzer
-                    return;
-                }
+                if (!container) return; // Nur prüfen, ob der Container existiert
+                // Coach wird für den aktuell angezeigten User gerendert (Fix 1)
                 container.innerHTML = generateCoachAdviceHtml('fit', myEntries);
             }
             // =====================================
@@ -1265,8 +1251,8 @@
                 let progress = (displayValue / goalMinutes) * 100;
                 let isGoalReached = progress >= 100;
                 
-                // *** SKALIERUNG FÜR PROPORTIONALITÄT (GEÄNDERT: IMMER 100% BREITE) ***
-                const relativeWidth = 100; // Immer 100% Breite, da die visuelle Vergleichbarkeit entfernt wurde
+                // *** SKALIERUNG FÜR PROPORTIONALITÄT (IMMERS 100% BREITE) ***
+                const relativeWidth = 100; 
                 
                 // *** SICHTBARKEITS-FIX (mindestens 2% Breite, wenn Fortschritt > 0) ***
                 let actualWidth = Math.min(100, progress);
@@ -1338,7 +1324,7 @@
                                 <!-- Zeile 3: Aktuelle Leistung (groß und sichtbar) -->
                                 <div class="pt-2">
                                     <span class="text-white text-xl font-extrabold">
-                                        ${actualUnits.toFixed(0)} / ${requiredUnits.toFixed(1)} Einheiten erreicht <!-- GEÄNDERT: Tage zu Einheiten -->
+                                        ${actualUnits.toFixed(0)} / ${requiredUnits.toFixed(1)} Einheiten erreicht
                                     </span>
                                 </div>
                             </div>
@@ -1347,7 +1333,7 @@
                 }
 
 
-                // --- GESAMTAUSGABE (GEÄNDERT: Prozent-Anzeige entfernt) ---
+                // --- GESAMTAUSGABE ---
                 containerEl.innerHTML = `
                     ${metricBoxes}
                     ${toggleButton}
@@ -1485,14 +1471,14 @@
             }
 
             /**
-             * NEUE FUNKTION: Rendert die Rangliste als übersichtliche, responsive Liste.
+             * Rendert die Rangliste als übersichtliche, responsive Liste.
              * @param {Array<Object>} participants - Liste aller Leaderboard-Teilnehmer.
              */
             function renderLeaderboard(participants) {
                 const leaderboardEl = document.getElementById('leaderboard');
                 if (!leaderboardEl || !participants) return;
 
-                // 1. Daten mit individueller Fortschrittsrate (Ist-Prozent des 8k Ziels) anreichern
+                // 1. Daten mit individueller Fortschrittsrate anreichern
                 const participantsWithProgress = participants.map(p => {
                     // Hole Einträge, entweder die eigenen (aus globaler 'entries') oder die gecachten
                     const pEntries = (p.id === userId) ? entries : (userEntriesCache[p.id] || []);
@@ -1520,8 +1506,6 @@
                 // 2. Sortierung nach Progress Ratio (beste Ratio zuerst)
                 let sortedParticipants = [...participantsWithProgress].sort((a, b) => b.progressRatio - a.progressRatio);
                 
-                // Finde Leader zur Anzeige des Pokals
-                const minutesLeader = sortedParticipants[0] || { minutes: -1, id: null };
                 
                 leaderboardEl.innerHTML = `
                     <p class="text-sm text-slate-400 mb-3">Sortiert nach prozentualer Differenz zum individuellen Sollwert des 8.000-Minuten-Ziels. Klicke auf eine Zeile, um die Details des Benutzers einzusehen.</p>
@@ -1545,12 +1529,11 @@
                             const rowClasses = isActiveUser 
                                 ? 'bg-primary/30 border-primary shadow-lg' 
                                 : isCurrentUser
-                                    ? 'bg-slate-700/60 border-slate-500'
-                                    : 'bg-slate-800/80 border-slate-700 hover:bg-slate-700';
+                                        ? 'bg-slate-700/60 border-slate-500'
+                                        : 'bg-slate-800/80 border-slate-700 hover:bg-slate-700';
 
                             const rankColor = isLeading ? 'text-accent' : isActiveUser ? 'text-primary' : 'text-slate-400';
                             const nicknameColor = isActiveUser ? 'text-white font-extrabold' : 'text-white font-semibold';
-                            // GEÄNDERT: Warnfarbe ist jetzt secondary (Amber)
                             const ratioColor = p.progressRatio >= 0 ? 'text-accent' : 'text-secondary';
                             
                             return `
@@ -1616,7 +1599,7 @@
                             const action = button.dataset.action;
                             const docId = button.dataset.docId;
 
-                            // Entferne alte Listener, bevor neue hinzugefügt werden (Delegation wäre besser, aber so geht's auch)
+                            // Entferne alte Listener, bevor neue hinzugefügt werden
                             const newButton = button.cloneNode(true);
                             button.parentNode.replaceChild(newButton, button);
                             
@@ -1633,7 +1616,7 @@
                 const recentActivitiesEl = document.getElementById('recent-activities');
                 if (!recentActivitiesEl || !myEntries) return;
                 
-                const sortedActivities = myEntries.sort((a, b) => (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) - (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)));
+                const sortedActivities = myEntries.sort((a, b) => (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) - (a.timestamp.toDate ? a.timestamp.toDate() : new Date(b.timestamp)));
                 
                 // Begrenze auf die 5 neuesten Aktivitäten
                 const limitedActivities = sortedActivities.slice(0, 5);
@@ -1659,7 +1642,7 @@
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-white font-semibold">Eintrag von ${activity.nickname} bearbeiten</span>
                                     <div class="flex space-x-2">
-                                        <button data-action="save" class="text-xs text-accent hover:text-green-400 transition-colors">Speichern</button>
+                                        <button data-action="save" data-doc-id="${activity.id}" class="text-xs text-accent hover:text-green-400 transition-colors">Speichern</button>
                                         <button data-action="cancel" class="text-xs text-secondary hover:text-red-400 transition-colors">Abbrechen</button>
                                     </div>
                                 </div>
@@ -1744,6 +1727,7 @@
             
             function setupTimeframeListeners(entriesToUse) {
                  document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                    // Klonen, um sicherzustellen, dass nur ein Listener pro Button existiert
                     const button = btn.cloneNode(true);
                     btn.parentNode.replaceChild(button, btn);
 
@@ -1759,7 +1743,8 @@
                         
                         renderWeeklyProgressGraph(entriesToUse);
                     });
-                     // Setze den initialen Timeframe-Button-Status
+                    
+                    // Setze den initialen Timeframe-Button-Status
                     const isSelected = button.dataset.timeframe === chartTimeframe;
                     button.classList.toggle('bg-primary', isSelected);
                     button.classList.toggle('hover:bg-blue-700', isSelected);
@@ -1784,11 +1769,11 @@
                 document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
                     const target = e.target;
                     const minutesInput = document.getElementById('minutes-input');
-                    if (target.classList.contains('minutes-btn')) {
+                    if (minutesInput && target.classList.contains('minutes-btn')) {
                         let currentMinutes = parseInt(minutesInput.value, 10);
                         currentMinutes += parseInt(target.dataset.minutes, 10);
                         minutesInput.value = currentMinutes;
-                    } else if (target.id === 'clear-minutes-btn') {
+                    } else if (target.id === 'clear-minutes-btn' && minutesInput) {
                         minutesInput.value = '0';
                     }
                 });
@@ -1796,7 +1781,8 @@
                 const sportSelect = document.getElementById('sport-select');
                 if (sportSelect) {
                     sportSelect.addEventListener('change', () => {
-                        document.getElementById('minutes-input').value = '0';
+                        const minutesInput = document.getElementById('minutes-input');
+                        if(minutesInput) minutesInput.value = '0';
                     });
                 }
                 
@@ -1805,13 +1791,10 @@
                     const target = e.target.closest('[data-user-id]');
                     if (target) showUserProgress(target.dataset.userId);
                 });
-
-                // NOTE: setupTimeframeListeners und setupRecentActivitiesListeners werden jetzt 
-                // in renderCollapsedContent aufgerufen, um Listener für dynamische Inhalte zu setzen.
             }
             
             // =====================================
-            // Formular-Handling (Bleibt unverändert)
+            // Formular-Handling
             // =====================================
             async function handleFormSubmit(e) {
                 e.preventDefault();
@@ -1823,12 +1806,16 @@
                 const minutes = parseInt(minutesInput.value, 10);
 
                 if (minutes > 0 && date && userId && currentUser) {
+                    // Hinzufügen einer Zeitverschiebung, um sicherzustellen, dass Firestore UTC korrekt speichert
+                    const selectedDate = new Date(date);
+                    selectedDate.setHours(12); // Setze auf Mittag, um Zeitzonenprobleme zu minimieren
+
                     const newEntry = {
                         userId: userId,
                         nickname: currentUser,
                         sport: sport,
                         minutes: minutes,
-                        timestamp: new Date(date)
+                        timestamp: selectedDate
                     };
                     
                     await addSportEntry(newEntry);
@@ -1891,15 +1878,18 @@
             }
 
             async function handleSaveEdit(docId) {
-                const editedSport = document.getElementById('edit-sport-select').value;
-                const editedMinutes = parseInt(document.getElementById('edit-minutes-input').value);
-                const editedDate = document.getElementById('edit-date-input').value;
-                
-                if (editedMinutes > 0 && editedDate) {
+                const editedSport = document.getElementById('edit-sport-select')?.value;
+                const editedMinutes = parseInt(document.getElementById('edit-minutes-input')?.value);
+                const editedDateString = document.getElementById('edit-date-input')?.value;
+
+                if (editedMinutes > 0 && editedDateString) {
+                    const editedDate = new Date(editedDateString);
+                    editedDate.setHours(12); // Korrektur der Zeitzone
+
                     const newEntry = {
                         sport: editedSport,
                         minutes: editedMinutes,
-                        timestamp: new Date(editedDate),
+                        timestamp: editedDate,
                     };
                     
                     await updateSportEntry(docId, newEntry);
@@ -1919,7 +1909,7 @@
             }
 
             // =====================================
-            // App-Initialisierung (Bleibt unverändert)
+            // App-Initialisierung
             // =====================================
             async function migrateDataFromLocalStorage(firebaseUid) {
                 appContainer.innerHTML = `<p class="text-center text-slate-400">Migriere lokale Daten...</p>`;
@@ -1968,10 +1958,10 @@
                             }, {});
                             await setDoc(doc(db, privateSportsPath), { sports: customSportsOnly });
                         }
-                    
+                        
                         showToast("Lokale Daten erfolgreich migriert!", "success");
                     } else {
-                           console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
+                        console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
                     }
                     
                     localStorage.removeItem('userId');
@@ -2070,3 +2060,4 @@
     </footer>
 </body>
 </html>
+
