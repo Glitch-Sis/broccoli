@@ -177,6 +177,7 @@
             // Speichert die aktuell geladenen Daten
             let entries = [];
             let leaderboardParticipants = [];
+            let userEntriesCache = {}; // NEU: Cache für die Einträge anderer Benutzer
 
             // =====================================
             // Firebase Konfiguration und Initialisierung
@@ -276,6 +277,7 @@
                     console.error("Firestore-Instanz ist nicht verfügbar.");
                     return [];
                 }
+                // Zugriff auf die private Sammlung des Benutzers
                 const privateEntriesPath = `/artifacts/${appId}/users/${uid}/sportEntries`;
                 const q = query(collection(db, privateEntriesPath));
                 const querySnapshot = await getDocs(q);
@@ -439,6 +441,9 @@
                     allSports = { ...SPORT_WEIGHTS, ...userSports };
                     leaderboardParticipants = await getLeaderboard();
                     
+                    // Setze displayedUserId zurück auf den eigenen Benutzer
+                    displayedUserId = userId; 
+                    
                     renderApp();
                 } catch (error) {
                     console.error("Fehler beim Laden der App-Daten: ", error);
@@ -532,7 +537,7 @@
                             
                             <!-- Teilnehmer Abschnitt (Rangliste, AN DIE SPITZE VERSCHOBEN) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Teilnehmer</h2>
+                                <h2 id="dashboard-title" class="text-xl sm:text-2xl font-bold text-white mb-4">Teilnehmer</h2>
                                 <div id="leaderboard" class="space-y-4">
                                     <!-- Die Rangliste wird hier geladen -->
                                 </div>
@@ -544,11 +549,8 @@
                                 <div id="progress-8000-content"></div> 
                             </div>
                             
-                            <!-- Fortschritt Abschnitt (15.000 Min WHO) -->
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">WHO fit & stark</h2>
-                                <div id="progress-15000-content"></div> 
-                            </div>
+                            <!-- Coach für 8k Ziel (NEU) -->
+                            <div id="coach-active-container"></div>
                             
                             <!-- Aktivität / Graph Abschnitt -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
@@ -576,16 +578,14 @@
                                 </div>
                             </div>
                             
-                             <!-- Personal Coach Abschnitt (NEU & EIGENSTÄNDIG) -->
-                            <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4 flex justify-between items-center">
-                                    Dein Personal Coach 
-                                    <span class="text-xs text-primary bg-slate-800 px-2 py-1 rounded-full font-semibold">Beta</span>
-                                </h2>
-                                <div id="personal-coach-advice" class="space-y-3">
-                                    <!-- Beratung wird hier gerendert -->
-                                </div>
+                            <!-- Fortschritt Abschnitt (15.000 Min WHO) - MOVED & RENAMED HEADER -->
+                            <div class="card bg-slate-700 p-6 rounded-xl border-2 border-slate-600">
+                                <h2 class="text-xl sm:text-2xl font-bold text-accent mb-4">⭐ Dein Stretch Goal (WHO fit & stark)</h2>
+                                <div id="progress-15000-content"></div> 
                             </div>
+                            
+                            <!-- Coach für 15k Ziel + Krafttraining (NEU) -->
+                            <div id="coach-fit-container"></div>
                             
                         </div>
                         <!-- Abschnitt zum Eintragen von Sport -->
@@ -601,7 +601,7 @@
                                     </div>
                                     <div>
                                         <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
-                                        <!-- KORRIGIERT: w-full ist nun korrekt gesetzt -->
+                                        <!-- KORRIGIERT: w-full Klasse für volle Breite auf allen Geräten -->
                                         <input type="date" id="date-input" class="p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary w-full">
                                     </div>
                                     <div>
@@ -715,7 +715,7 @@
                     profileUserIdEl.textContent = userId;
                     
                     if (copyIdBtn) {
-                         copyIdBtn.addEventListener('click', () => {
+                        copyIdBtn.addEventListener('click', () => {
                             copyToClipboard(userId, 'Volle ID wurde in die Zwischenablage kopiert. Nutze diese, um dich auf einem anderen Gerät anzumelden.');
                         });
                     }
@@ -723,8 +723,9 @@
                 // --- ENDE PROFIL-LOGIK ---
 
                 setupEventListeners();
-                // Beim Start wird das Dashboard gerendert und damit die Initialdaten geladen
-                showSection('dashboard');
+                // Beim Start wird das Dashboard mit den eigenen Einträgen gerendert
+                const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
+                showSection('dashboard', entriesToUse);
             }
 
             /**
@@ -747,7 +748,9 @@
 
                 // Ruft nur die relevanten Rendering-Funktionen auf
                 if (sectionId === 'dashboard') {
-                    renderDashboardContent();
+                    // NEU: Gib die richtigen Einträge weiter (eigene oder gecachte)
+                    const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
+                    renderDashboardContent(entriesToUse); 
                     renderSportSelect();
                 } else if (sectionId === 'add-sport') {
                     renderSportSelect(); // Für das Dropdown im Hinzufügen-Formular
@@ -758,14 +761,24 @@
             }
 
             /** Aktualisiert die UI-Elemente, die sich im Dashboard befinden */
-            function renderDashboardContent() {
-                const currentEntries = entries.filter(entry => entry.userId === displayedUserId);
-                renderLeaderboard(leaderboardParticipants); // An die Spitze verschoben
+            // WICHTIGE ÄNDERUNG: Nimmt jetzt die zu verwendenden Einträge entgegen
+            function renderDashboardContent(currentEntries) { 
+                
+                // Aktualisiere den Dashboard-Titel basierend auf dem angezeigten Benutzer
+                const userNickname = leaderboardParticipants.find(p => p.id === displayedUserId)?.nickname || currentUser;
+                const titleEl = document.getElementById('dashboard-title');
+                if (titleEl) {
+                    titleEl.textContent = (displayedUserId === userId) ? 'Dein Dashboard' : `Dashboard von ${userNickname}`;
+                }
+
+                renderLeaderboard(leaderboardParticipants); 
                 renderGoalProgress('8000', GOAL_MINUTES, currentEntries);
-                renderGoalProgress('15000', WHO_GOAL_MINUTES, currentEntries); 
+                renderCoachActiveGoal(currentEntries); // NEU: Coach für 8k Ziel
+                renderWeeklyProgressGraph(currentEntries); // Hier aufrufen, damit es im DOM ist
                 renderSportSummary(currentEntries);
                 renderRecentActivities(currentEntries);
-                renderPersonalCoach(currentEntries); // NEU: Personal Coach rendern
+                renderGoalProgress('15000', WHO_GOAL_MINUTES, currentEntries);
+                renderCoachFitGoal(currentEntries); // NEU: Coach für 15k Ziel & Krafttraining
             }
 
             /** Aktualisiert die UI-Elemente, die sich in der Sporterstell-Sektion befinden */
@@ -774,56 +787,104 @@
             }
             
             // =====================================
-            // Personal Coach Modul
+            // NEU: Leaderboard Interaktion
             // =====================================
 
+            /** Stellt den Fortschritt für einen bestimmten Benutzer in der Ansicht dar */
+            async function showUserProgress(uid) {
+                if (uid === displayedUserId) return; // Bereits angezeigt
+                
+                let entriesToDisplay = [];
+                const participant = leaderboardParticipants.find(p => p.id === uid);
+                const nickname = participant ? participant.nickname : formatUserId(uid);
+
+                if (uid === userId) {
+                    entriesToDisplay = entries; // Eigene Daten sind global gespeichert
+                } else if (userEntriesCache[uid]) {
+                    entriesToDisplay = userEntriesCache[uid]; // Daten aus Cache
+                } else {
+                    // Zeige Ladezustand
+                    document.getElementById('dashboard-section').innerHTML = `
+                        <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
+                            <h2 class="text-2xl font-bold text-center text-white pt-10">Lade Daten für ${nickname}...</h2>
+                            <p class="text-center text-slate-400 animate-pulse-slow">Einen Moment bitte...</p>
+                        </div>
+                    `;
+                    
+                    // Daten abrufen und in Cache speichern
+                    entriesToDisplay = await getSportEntries(uid);
+                    userEntriesCache[uid] = entriesToDisplay;
+                }
+                
+                displayedUserId = uid;
+                renderApp(); // Ruft renderApp neu auf, um die Navigation und das Layout neu zu setzen
+                // showSection('dashboard') wird dann mit den korrekten Einträgen gerendert
+            }
+
+            // =====================================
+            // Personal Coach Modul (Geteilt)
+            // =====================================
+            
+            /** SVG-Icons für den Coach-Status */
+            const COACH_ICONS = {
+                // Grüner Haken oder Daumen hoch
+                POSITIVE: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-7 h-7">
+                             <path fill-rule="evenodd" d="M18.685 19.02a1.75 1.75 0 00.32-1.077c-.125-.975-.382-1.89-.752-2.733.917-.79 1.543-1.815 1.713-2.913a.75.75 0 10-1.472-.379c-.1.385-.292.775-.55 1.082a.75.75 0 00-.094.137c-.77 1.016-1.58 2.05-2.098 3.197.802.43 1.34 1.155 1.5 2.055a.75.75 0 001.446-.247zM20 12.375a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75v-1.5zM12.375 20a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5zM11.25 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77z" clip-rule="evenodd" />
+                           </svg>`,
+                // Roter Blitz oder Warnung
+                NEGATIVE: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-7 h-7">
+                             <path fill-rule="evenodd" d="M9.401 3.003c1.155-1.112 3.3-1.112 4.456 0L19.5 7.5V17.25c0 1.036-.84 1.875-1.875 1.875h-3.126a3.375 3.375 0 11-.494-1.875l.487.352c.264.19.57.293.893.293h.388c.198 0 .377-.076.516-.216.139-.139.215-.318.215-.516V7.5L12 4.148 6.002 7.5v9.75c0 .245.105.474.288.636.183.162.433.243.682.243h.739c.249 0 .499-.081.682-.243.183-.162.288-.391.288-.636V9a3.375 3.375 0 00-6.75 0v10.5h1.5v-7.5a.75.75 0 011.5 0v7.5h1.5v-7.5a.75.75 0 011.5 0v7.5h1.5v-7.5a.75.75 0 011.5 0v7.5h.388c.571 0 1.037-.466 1.037-1.037V7.5l-5.093-4.497zM9 9a1.875 1.875 0 113.75 0 1.875 1.875 0 01-3.75 0z" clip-rule="evenodd" />
+                           </svg>`
+            };
+            
             /** Berechnet den Fortschritt beim Krafttraining über den gesamten Zeitraum. */
             function calculateStrengthTrainingProgress(entries) {
                 const now = new Date();
                 const startDate = GOAL_START_DATE;
                 const requiredWeeklyRate = 2; // WHO requirement
                 
-                // 1. Calculate Actual Strength Days achieved in the challenge window
-                const strengthDaysAchieved = new Set();
+                // 1. Calculate Actual Strength Units achieved in the challenge window (unique days)
+                const strengthUnitsAchieved = new Set();
                 entries.forEach(entry => {
                     const entryDate = entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
                     // Ensure entry is within the overall challenge period and is a strength sport
                     if (STRENGTH_SPORTS.includes(entry.sport) && entryDate >= startDate && entryDate <= now) {
-                        // Count unique days (date part only)
-                        strengthDaysAchieved.add(entryDate.toISOString().split('T')[0]);
+                        // Count unique days (date part only) as 1 unit
+                        strengthUnitsAchieved.add(entryDate.toISOString().split('T')[0]);
                     }
                 });
 
-                const actualDays = strengthDaysAchieved.size;
+                const actualUnits = strengthUnitsAchieved.size;
 
-                // 2. Calculate Required Strength Days (Soll)
+                // 2. Calculate Required Strength Units (Soll)
                 const elapsedMs = now.getTime() - startDate.getTime();
                 
-                let requiredDays = 0;
+                let requiredUnits = 0;
                 
                 if (elapsedMs > 0 && TOTAL_DURATION_MS > 0) {
                     // Days elapsed since start (clamped at total duration to avoid future calculation)
                     const elapsedDays = Math.min(elapsedMs / (1000 * 60 * 60 * 24), TOTAL_DURATION_MS / (1000 * 60 * 60 * 24));
                     
-                    // Required strength days = (Elapsed Days / 7 days) * 2 days
-                    requiredDays = (elapsedDays / 7) * requiredWeeklyRate;
+                    // Required strength units = (Elapsed Days / 7 days) * 2 units
+                    requiredUnits = (elapsedDays / 7) * requiredWeeklyRate;
                 } else if (elapsedMs >= TOTAL_DURATION_MS) {
-                    // If challenge is over, goal is the total maximum days (52 weeks * 2 days)
-                    requiredDays = (TOTAL_DURATION_MS / (1000 * 60 * 60 * 24) / 7) * requiredWeeklyRate; 
+                    // If challenge is over, goal is the total maximum days (52 weeks * 2 units)
+                    requiredUnits = (TOTAL_DURATION_MS / (1000 * 60 * 60 * 24) / 7) * requiredWeeklyRate; 
                 }
                 
-                return { actualDays: actualDays, requiredDays: requiredDays };
+                return { actualUnits: actualUnits, requiredUnits: requiredUnits };
             }
             
-            /** Rendert den Personal Coach Abschnitt */
-            function renderPersonalCoach(myEntries) {
-                const coachEl = document.getElementById('personal-coach-advice');
-                if (!coachEl) return;
-
-                const { requiredProgressPercentage: required8k, requiredMinutes: required8kMin } = calculateRequiredProgress(GOAL_MINUTES);
-                const { requiredProgressPercentage: required15k, requiredMinutes: required15kMin } = calculateRequiredProgress(WHO_GOAL_MINUTES);
+            /**
+             * Generiert den HTML-Inhalt für den Coach basierend auf einem spezifischen Fokus.
+             * @param {'active' | 'fit'} focus - Welches Ziel fokussiert werden soll.
+             * @param {Array<Object>} entries - Die Sporteinträge des Benutzers.
+             */
+            function generateCoachAdviceHtml(focus, entries) {
+                const { requiredProgressPercentage: required8k } = calculateRequiredProgress(GOAL_MINUTES);
+                const { requiredProgressPercentage: required15k } = calculateRequiredProgress(WHO_GOAL_MINUTES);
                 
-                const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
+                const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
                 
                 const progress8k = (totalMinutes / GOAL_MINUTES) * 100;
                 const progress15k = (totalMinutes / WHO_GOAL_MINUTES) * 100;
@@ -831,105 +892,113 @@
                 const minutesLag8k = required8k - progress8k;
                 const minutesLag15k = required15k - progress15k;
 
-                const { actualDays, requiredDays } = calculateStrengthTrainingProgress(myEntries);
-                const strengthLag = requiredDays - actualDays;
-                
-                let adviceHeadline = "Phänomenal! Du bist voll im Flow.";
-                let headlineColor = "text-primary"; 
-                
-                let adviceTextHtml = ''; // Wird für Absätze und formatierte Texte verwendet
-                
-                let maxLag = 0; // Größter Rückstand in Prozent (für Minuten) oder Tagen (für Kraft)
-                
-                // Priorität der Analyse: 1. Krafttraining, 2. 8k-Minuten, 3. 15k-Minuten
-                if (strengthLag > 10) { 
-                    maxLag = strengthLag;
-                } else if (minutesLag8k > 5) {
-                    maxLag = minutesLag8k;
-                } else if (minutesLag15k > 5 && GOAL_MINUTES > required8kMin) {
-                     maxLag = minutesLag15k;
-                }
+                const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(entries);
+                const strengthLag = requiredUnits - actualUnits;
 
-                // --- Auswertung und spezifische Verbesserungsvorschläge ---
-                if (maxLag > 0) {
-                    headlineColor = "text-secondary"; // Rot für Alarm-Zustand
-                    
-                    adviceTextHtml += `<h3 class="text-lg font-bold text-white mt-1">Status-Analyse:</h3>`;
-                    
-                    let lagDetail = '';
-                    let lagTarget = '';
-                    
-                    if (strengthLag === maxLag && strengthLag > 10) { // Fokus auf Krafttraining
-                        adviceHeadline = "Hol dir deine Kraft zurück!";
-                        lagTarget = 'Krafttraining';
-                        lagDetail = `<span class="font-bold text-secondary">${strengthLag.toFixed(1)} Tage</span>`;
-                        adviceTextHtml += `<p class="text-slate-300">Du bist stark bei der Ausdauer, aber wir sehen eine Lücke im Bereich <span class="font-bold text-white">${lagTarget}</span>. Die WHO empfiehlt 2 Einheiten pro Woche, aber du liegst um ${lagDetail} hinter dem Plan. Krafttraining ist essenziell für Stabilität!</p>`;
-                        
-                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
-                        adviceTextHtml += `<p class="text-white">Beginne diese Woche mit <span class="font-bold">einer 15-minütigen</span> Yoga- oder Krafttrainingseinheit. Wichtig ist die Regelmäßigkeit, nicht die Härte. Du schaffst das!</p>`;
+                let adviceHeadline = "";
+                let headlineColor = "text-primary";
+                let adviceIcon = COACH_ICONS.POSITIVE; // Standard-Icon
+                let adviceTextHtml = "";
+                
+                const getTopSport = () => Object.keys(entries.reduce((acc, entry) => {
+                    acc[entry.sport] = (acc[entry.sport] || 0) + entry.minutes;
+                    return acc;
+                }, {})).sort((a, b) => entries.filter(e => e.sport === b).length - entries.filter(e => e.sport === a).length)[0] || "Laufen";
 
-                    } else if (minutesLag8k === maxLag && minutesLag8k > 5) { // Fokus auf 8k Minuten
-                        adviceHeadline = "Jetzt Gegensteuern! Dein Grundziel ruft.";
-                        lagTarget = 'WHO gesund aktiv (8.000 Min)';
-                        lagDetail = `<span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span>`;
-                        adviceTextHtml += `<p class="text-slate-300">Du bist ein Kämpfer, aber der Plan <span class="font-bold text-white">${lagTarget}</span> läuft dir mit ${lagDetail} Vorsprung davon. Keine Sorge, das holen wir auf!</p>`;
-                        
-                        const topSport = Object.keys(myEntries.reduce((acc, entry) => {
-                            acc[entry.sport] = (acc[entry.sport] || 0) + entry.minutes;
-                            return acc;
-                        }, {})).sort((a, b) => myEntries.filter(e => e.sport === b).length - myEntries.filter(e => e.sport === a).length)[0] || "Laufen";
-                        
-                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
-                        adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${topSport}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
-                        
-                    } else if (minutesLag15k === maxLag && minutesLag15k > 5) { // Fokus auf 15k Minuten
-                        adviceHeadline = "Du bist fast am Gipfel! Top-Ziel in Sicht.";
-                        lagTarget = 'WHO fit & stark (15.000 Min)';
-                        lagDetail = `<span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span>`;
-                        adviceTextHtml += `<p class="text-slate-300">Du hast das 8.000-Minuten-Ziel fest im Griff! Um das anspruchsvolle Ziel <span class="font-bold text-white">${lagTarget}</span> zu knacken, müssen wir die Intensität leicht erhöhen. Der Rückstand beträgt ${lagDetail}.</p>`;
-                        
-                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
-                        adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und plane eine <span class="font-bold">zweite Session</span> pro Woche ein. Wir lieben Herausforderungen!</p>`;
+
+                if (focus === 'active') {
+                    // --- Coach Active (Fokus: 8k Minuten) ---
+                    if (progress8k >= 100) {
+                        adviceHeadline = "Ziel A erreicht! Du bist bereits fit.";
+                        headlineColor = "text-accent";
+                        adviceIcon = COACH_ICONS.POSITIVE;
+                        adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein Basis-Ziel von 8.000 Minuten bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Stretch Goal anzuvisieren.</p>`;
+                    } else if (minutesLag8k > 5) {
+                        adviceHeadline = "Aufholen nötig: WHO aktiv Ziel in Gefahr.";
+                        headlineColor = "text-secondary";
+                        adviceIcon = COACH_ICONS.NEGATIVE;
+                        const lagDetail = `<span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span>`;
+                        adviceTextHtml = `<p class="text-slate-300">Du bist im Rückstand! Der Plan läuft dir mit ${lagDetail} Vorsprung davon. Hol dir deine Basis-Gesundheit zurück. Konzentriere dich auf Regelmäßigkeit.</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${getTopSport()}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
+                    } else {
+                        adviceHeadline = "Im Zeitplan: WHO aktiv Ziel auf Kurs.";
+                        headlineColor = "text-primary";
+                        adviceIcon = COACH_ICONS.POSITIVE;
+                        adviceTextHtml = `<p class="text-slate-300">Perfekt! Du bist aktuell im Zeitplan, um das 8.000-Minuten-Basis-Ziel zu erreichen. Halte diesen Rhythmus bei, um dein Fundament zu sichern.</p>`;
                     }
-                } else {
-                     // Status Gut: Kurze Einschätzung beider Ziele
-                    adviceHeadline = "Phänomenal! Du bist voll im Flow.";
-                    headlineColor = "text-primary"; 
-                    
-                    adviceTextHtml += `<h3 class="text-lg font-bold text-white mt-1">Status-Analyse:</h3>`;
-                    
-                    adviceTextHtml += `<p class="text-slate-300">Herzlichen Glückwunsch! Du liegst bei <span class="font-bold text-primary">beiden Minutenzielen</span> und bei der <span class="font-bold text-primary">Krafttrainingsempfehlung</span> <span class="font-bold text-accent">im Zeitplan</span>. Dein Engagement ist beeindruckend!</p>`;
-                    
-                    adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Dein nächster Fokus:</h3>`;
-                    adviceTextHtml += `<p class="text-white">Halte diesen Rhythmus bei und beginne, das 15.000-Minuten-Ziel als deine neue Basis zu sehen. Der Schlüssel ist jetzt Konsistenz und Freude an der Bewegung. Finde neue Herausforderungen!</p>`;
+
+                } else if (focus === 'fit') {
+                    // --- Coach Fit (Fokus: Krafttraining + 15k Minuten) ---
+                    if (strengthLag > 10) {
+                        adviceHeadline = "Dringend: Krafttraining nachholen!";
+                        headlineColor = "text-secondary";
+                        adviceIcon = COACH_ICONS.NEGATIVE;
+                        const lagDetail = `<span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span>`;
+                        adviceTextHtml = `<p class="text-slate-300">Deine Ausdauer ist super, aber dein Krafttraining vernachlässigst du. Du liegst um ${lagDetail} hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Starte diese Woche mit <span class="font-bold">zwei 15-minütigen</span> Yoga- oder Krafttrainingseinheiten (z.B. HIIT). Priorität: Kraft!</p>`;
+                    } else if (progress15k >= 100) {
+                        adviceHeadline = "Grandios! Du bist 'fit & stark'.";
+                        headlineColor = "text-accent";
+                        adviceIcon = COACH_ICONS.POSITIVE;
+                        adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Du hast das anspruchsvolle 15.000-Minuten-Stretch Goal erreicht. Du bist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
+                    } else if (minutesLag15k > 5) {
+                        adviceHeadline = "Top-Ziel in Sicht: Intensität erhöhen.";
+                        headlineColor = "text-primary";
+                        adviceIcon = COACH_ICONS.POSITIVE;
+                        const lagDetail = `<span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span>`;
+                        adviceTextHtml = `<p class="text-slate-300">Du bist auf dem Weg, aber das 15.000-Minuten-Ziel läuft dir mit ${lagDetail} Vorsprung davon. Du musst mehr Minunten pro Woche sammeln, um aufzuholen.</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und füge eine <span class="font-bold">zweite Session</span> pro Woche ein.</p>`;
+                    } else {
+                        adviceHeadline = "Du bist voll im Flow! Weiter so!";
+                        headlineColor = "text-primary";
+                        adviceIcon = COACH_ICONS.POSITIVE;
+                        adviceTextHtml = `<p class="text-slate-300">Du hältst den Rhythmus! Du bist gut aufgestellt, um sowohl deine Krafttrainings-Einheiten zu absolvieren als auch das anspruchsvolle 15.000-Minuten-Ziel zu erreichen.</p>`;
+                    }
                 }
                 
-                // --- Langfristiger Nutzen ---
-                adviceTextHtml += `
-                    <div class="mt-6 pt-4 border-t border-slate-600">
-                        <h3 class="text-lg font-bold text-accent mb-2">Dein langfristiger Gewinn:</h3>
-                        <p class="text-slate-400 text-sm">
-                            Jeder Schritt, den du machst, ist eine Investition in dich selbst. Durch dieses Engagement stärkst du nicht nur deine Muskeln und Ausdauer, sondern verbesserst aktiv deine <span class="font-bold">Herzgesundheit</span>, steigerst dein <span class="font-bold">Energielevel</span> und sicherst dir einen <span class="font-bold">erholsameren Schlaf</span>. Diese Gewohnheit ist dein größter Erfolg – sie hält dich weit über diese Challenge hinaus fit und energiegeladen! 
-                        </p>
+                // Final HTML structure for the coach container
+                return `
+                    <div class="card bg-slate-800 p-5 rounded-xl border border-slate-700 mt-4">
+                        <div class="flex items-center space-x-3 pb-2 border-b border-slate-700 mb-3">
+                            <span class="${headlineColor}">
+                                ${adviceIcon}
+                            </span>
+                            <h3 class="text-xl font-bold text-white">${adviceHeadline}</h3>
+                            <span class="text-xs text-primary bg-slate-700 px-2 py-1 rounded-full font-semibold ml-auto">Coach</span>
+                        </div>
+                        <div class="space-y-3">
+                            ${adviceTextHtml}
+                        </div>
                     </div>
                 `;
+            }
 
-                // --- Ausgabe rendern ---
-                coachEl.innerHTML = `
-                    <div class="flex items-center space-x-3 pb-2">
-                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 ${headlineColor}">
-                            <path fill-rule="evenodd" d="M18.685 19.02a1.75 1.75 0 00.32-1.077c-.125-.975-.382-1.89-.752-2.733.917-.79 1.543-1.815 1.713-2.913a.75.75 0 10-1.472-.379c-.1.385-.292.775-.55 1.082a.75.75 0 00-.094.137c-.77 1.016-1.58 2.05-2.098 3.197.802.43 1.34 1.155 1.5 2.055a.75.75 0 001.446-.247zM20 12.375a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75v-1.5zM12.375 20a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5zM11.25 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77z" clip-rule="evenodd" />
-                        </svg>
-                        <h3 class="text-xl font-bold ${headlineColor}">${adviceHeadline}</h3>
-                    </div>
-                    ${adviceTextHtml}
-                `;
+            /** Rendert den Coach für das WHO aktiv Ziel (8k). */
+            function renderCoachActiveGoal(myEntries) {
+                const container = document.getElementById('coach-active-container');
+                if (!container || displayedUserId !== userId) {
+                    if (container) container.innerHTML = ''; // Entferne Coach für andere Nutzer
+                    return;
+                }
+                container.innerHTML = generateCoachAdviceHtml('active', myEntries);
+            }
+
+            /** Rendert den Coach für das WHO fit & stark Ziel (15k + Kraft). */
+            function renderCoachFitGoal(myEntries) {
+                const container = document.getElementById('coach-fit-container');
+                if (!container || displayedUserId !== userId) {
+                    if (container) container.innerHTML = ''; // Entferne Coach für andere Nutzer
+                    return;
+                }
+                container.innerHTML = generateCoachAdviceHtml('fit', myEntries);
             }
             // =====================================
             // Ende Personal Coach Modul
             // =====================================
             
-
             /** Kürzt die Firebase UID für die Anzeige. */
             function formatUserId(uid) {
                 if (!uid) return 'N/A';
@@ -1019,8 +1088,11 @@
                 const containerEl = document.getElementById(`progress-${idSuffix}-content`);
                 if (!containerEl || !myEntries) return;
 
-                const isWeighted = idSuffix === '8000'; // Nur das 8000er Ziel hat Umschalt-Option und gewichtete Minuten
-                const currentView = isWeighted ? myProgressView : 'minutes';
+                // Stelle sicher, dass der Coach nur die eigenen Daten sieht
+                const isPersonalView = displayedUserId === userId;
+
+                const isWeightedGoal = idSuffix === '8000'; // Nur das 8000er Ziel hat Umschalt-Option und gewichtete Minuten
+                const currentView = isWeightedGoal && isPersonalView ? myProgressView : 'minutes';
                 
                 const { requiredProgressPercentage, requiredMinutes } = calculateRequiredProgress(goalMinutes);
                 
@@ -1045,11 +1117,11 @@
                     actualWidth = 2; 
                 }
 
-                // --- HTML-STRUKTUR & METRIKEN ---
+                // --- HTML-STRUKTUR & METRIKEN (GEÄNDERT: Prozent in Ist-Feld integriert) ---
                 let metricBoxes = `
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 text-center">
                         <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
-                            <div class="text-xs text-slate-400">Erreicht (Ist)</div>
+                            <div class="text-xs text-slate-400">Erreicht (${progress.toFixed(1)}%)</div> 
                             <div class="text-xl font-bold ${isGoalReached ? 'text-primary' : 'text-white'}">${displayValue.toFixed(currentView === 'weighted' ? 1 : 0)} Min</div>
                         </div>
                         <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
@@ -1065,8 +1137,8 @@
                     </div>
                 `;
                 
-                // Umschalt-Button nur für das 8000er Ziel
-                const toggleButton = isWeighted ? `
+                // Umschalt-Button nur für das 8000er Ziel und nur im eigenen Dashboard
+                const toggleButton = (isWeightedGoal && isPersonalView) ? `
                     <div class="flex justify-center mb-4 items-center space-x-3">
                         <button id="toggle-progress-btn" data-goal-id="${idSuffix}" class="text-sm text-white py-1 px-3 rounded-full bg-primary hover:bg-blue-700 transition-colors">
                             Ansicht: ${currentView === 'minutes' ? 'Zu Gewichtete Min. wechseln' : 'Zu Ungewichtete Min. wechseln'}
@@ -1074,11 +1146,11 @@
                     </div>
                 ` : `<div class="mb-4"></div>`; // Platzhalter für Konsistenz
 
-                // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL) ---
+                // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL und nur in eigener Ansicht) ---
                 let strengthCounter = '';
-                if (idSuffix === '15000') {
-                    const { actualDays, requiredDays } = calculateStrengthTrainingProgress(myEntries);
-                    const isGoalMet = actualDays >= requiredDays;
+                if (idSuffix === '15000' && isPersonalView) {
+                    const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(myEntries); // GEÄNDERT: Variablenamen
+                    const isGoalMet = actualUnits >= requiredUnits;
                     const strengthTooltipContent = `Eingerechnete Sportarten: ${STRENGTH_SPORTS.join(', ')}`;
                     
                     strengthCounter = `
@@ -1109,7 +1181,7 @@
                                 <!-- Zeile 3: Aktuelle Leistung (groß und sichtbar) -->
                                 <div class="pt-2">
                                     <span class="text-white text-xl font-extrabold">
-                                        ${actualDays.toFixed(0)} / ${requiredDays.toFixed(1)} Tage erreicht
+                                        ${actualUnits.toFixed(0)} / ${requiredUnits.toFixed(1)} Einheiten erreicht <!-- GEÄNDERT: Tage zu Einheiten -->
                                     </span>
                                 </div>
                             </div>
@@ -1118,7 +1190,7 @@
                 }
 
 
-                // --- GESAMTAUSGABE ---
+                // --- GESAMTAUSGABE (GEÄNDERT: Prozent-Anzeige entfernt) ---
                 containerEl.innerHTML = `
                     ${metricBoxes}
                     ${toggleButton}
@@ -1131,23 +1203,25 @@
                     </div>
                     
                     <p class="text-left text-sm font-semibold text-slate-400 mt-0">
-                        Ziel: ${goalMinutes.toLocaleString('de-DE')} Minuten. Aktueller Fortschritt: ${progress.toFixed(1)}%
+                        Ziel: ${goalMinutes.toLocaleString('de-DE')} Minuten.
                     </p>
 
                     ${strengthCounter}
                 `;
                 
                 // Event Listener für den Toggle-Button muss neu angehängt werden
-                if (isWeighted) {
+                if (isWeightedGoal && isPersonalView) {
                     document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
                         myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
-                        renderDashboardContent();
+                        renderDashboardContent(myEntries); // Aktualisiere nur den Dashboard-Inhalt
                     });
                 }
 
                 // Stelle sicher, dass der Graph und andere Elemente aktualisiert werden
                 if (idSuffix === '8000') {
-                    renderWeeklyProgressGraph(myEntries);
+                    // Da renderDashboardContent jetzt alle Komponenten in der richtigen Reihenfolge aufruft,
+                    // muss der Graph hier nicht mehr gerendert werden, um Doppel-Rendering zu vermeiden.
+                    // Stattdessen wird er direkt in renderDashboardContent aufgerufen.
                 }
             }
 
@@ -1278,15 +1352,15 @@
                 
                 // KORRIGIERT: Entfernen der doppelten H2 Überschrift und beibehalten der Sortierungsbeschreibung
                 leaderboardEl.innerHTML = `
-                    <p class="text-sm text-slate-400 mb-4">Sortiert nach gesammelten Minuten (ungewichtet).</p>
-                    <div class="flex flex-col sm:flex-row gap-4">
+                    <p class="text-sm text-slate-400 mb-4">Sortiert nach gesammelten Minuten (ungewichtet). Klicke, um den Fortschritt zu sehen.</p>
+                    <div class="flex flex-wrap gap-4">
                         ${sortedParticipants.map((p, index) => {
                             const isMinutesLeader = p.id === minutesLeader.id;
                             const isWeightedLeader = p.id === weightedLeader.id;
                             const isActiveUser = p.id === displayedUserId;
                             
                             return `
-                                <div data-user-id="${p.id}" class="flex-1 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
+                                <div data-user-id="${p.id}" class="flex-1 min-w-[200px] p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary scale-105' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
                                     <h3 class="text-xl font-bold mb-2 text-white flex items-center justify-center">
                                         <span class="text-3xl font-extrabold mr-2 ${index === 0 ? 'text-accent' : 'text-slate-500'}">${index + 1}.</span>
                                         ${p.nickname}
@@ -1308,7 +1382,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="text-sm text-slate-500 mt-2">ID: ${formatUserId(p.id)}</div>
+                                    <!-- ENTFERNT: <div class="text-sm text-slate-500 mt-2">ID: ${formatUserId(p.id)}</div> -->
                                     </div>
                             `;
                         }).join('')}
@@ -1346,15 +1420,17 @@
                 const limitedActivities = sortedActivities.slice(0, 5);
 
                 if (limitedActivities.length === 0) {
-                    recentActivitiesEl.innerHTML = '<p class="text-center text-slate-400 p-4">Keine Aktivitäten gefunden. Trage deine erste Sportart ein!</p>';
+                    recentActivitiesEl.innerHTML = '<p class="text-center text-slate-400 p-4">Keine Aktivitäten gefunden.</p>';
                     return;
                 }
+                // Zeige nur die Bearbeitungsbuttons, wenn es der eigene User ist
+                const isPersonalView = displayedUserId === userId;
 
                 recentActivitiesEl.innerHTML = limitedActivities.map(activity => {
                     const date = activity.timestamp.toDate ? activity.timestamp.toDate() : new Date(activity.timestamp);
                     // Zeige nur das Datum an
                     const dateString = date.toLocaleDateString('de-DE'); 
-                    const isMyEntry = activity.userId === userId;
+                    const isMyEntry = activity.userId === userId; // Prüfe, ob der Eintrag dem angemeldeten Benutzer gehört
                     const weight = allSports[activity.sport] || 1.0;
                     
                     if (isMyEntry && activity.id === editingDocId) {
@@ -1381,7 +1457,8 @@
                         `;
                     } else {
                         // Normale Ansicht
-                        const actionButtons = isMyEntry ? `
+                        // Buttons nur anzeigen, wenn es der eigene Eintrag UND die eigene Ansicht ist
+                        const actionButtons = (isMyEntry && isPersonalView) ? `
                             <div class="flex space-x-2">
                                 <button data-action="edit" data-doc-id="${activity.id}" class="text-xs text-slate-400 hover:text-white transition-colors">Bearbeiten</button>
                                 <button data-action="delete" data-doc-id="${activity.id}" class="text-xs text-secondary hover:text-red-400 transition-colors">Löschen</button>
@@ -1487,9 +1564,6 @@
                     if (target) showUserProgress(target.dataset.userId);
                 });
                 
-                // Der globale Copy-Button wurde entfernt, da die Sektion verschoben wurde.
-
-                
                 // Event Listener für Timeframe (muss neu angehängt werden, da Dashboard neu gerendert wird)
                 document.querySelectorAll('.timeframe-btn').forEach(btn => {
                     btn.addEventListener('click', async () => {
@@ -1501,7 +1575,9 @@
                             b.classList.toggle('bg-slate-600', !isSelected);
                             b.classList.toggle('hover:bg-slate-500', !isSelected);
                         });
-                        renderDashboardContent();
+                        
+                        const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
+                        renderDashboardContent(entriesToUse);
                     });
                 });
 
@@ -1591,7 +1667,8 @@
 
             function handleEditClick(docId) {
                 editingDocId = docId;
-                renderDashboardContent();
+                const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
+                renderDashboardContent(entriesToUse);
             }
 
             async function handleSaveEdit(docId) {
@@ -1609,7 +1686,8 @@
                     await updateSportEntry(docId, newEntry);
                     
                     editingDocId = null;
-                    renderDashboardContent();
+                    const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
+                    renderDashboardContent(entriesToUse);
                 } else {
                     showDynamicModal("Ungültige Eingabe", "Bitte geben Sie eine positive Minutenzahl und ein Datum ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
                 }
@@ -1617,7 +1695,8 @@
 
             function handleCancelEdit() {
                 editingDocId = null;
-                renderDashboardContent();
+                const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
+                renderDashboardContent(entriesToUse);
             }
 
             // =====================================
@@ -1673,7 +1752,7 @@
                     
                         showToast("Lokale Daten erfolgreich migriert!", "success");
                     } else {
-                         console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
+                           console.warn("Keine zu migrierenden Einträge für diesen Benutzer gefunden.");
                     }
                     
                     localStorage.removeItem('userId');
@@ -1743,7 +1822,7 @@
             }
 
             startApp();
-        })(); // <--- Hinzugefügte schließende Klammer
+        })(); 
     </script>
 </head>
 <body class="p-4 sm:p-8">
@@ -1772,6 +1851,3 @@
     </footer>
 </body>
 </html>
-
-
-
