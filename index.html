@@ -155,10 +155,8 @@
             const GOAL_MINUTES = 8000;
             const WHO_GOAL_MINUTES = 15000; // Zweites Ziel (Maximales Ziel für Skalierung)
 
-            // Zieldaten für die Soll-Berechnung (01.09.2025 bis 01.09.2026)
+            // HARDCODED START DATE (Original Challenge Start)
             const GOAL_START_DATE = new Date('2025-09-01T00:00:00Z');
-            const GOAL_END_DATE = new Date('2026-09-01T00:00:00Z');
-            const TOTAL_DURATION_MS = GOAL_END_DATE.getTime() - GOAL_START_DATE.getTime();
 
             const appContainer = document.getElementById('app-container');
             const modal = document.getElementById('message-modal');
@@ -177,7 +175,9 @@
             // Speichert die aktuell geladenen Daten
             let entries = [];
             let leaderboardParticipants = [];
-            let userEntriesCache = {}; // NEU: Cache für die Einträge anderer Benutzer
+            let userEntriesCache = {}; // Cache für die Einträge anderer Benutzer
+            // Hält das tatsächliche Startdatum der Challenge für den eingeloggten Benutzer
+            let userChallengeStartDate = GOAL_START_DATE; 
 
             // =====================================
             // Firebase Konfiguration und Initialisierung
@@ -297,6 +297,7 @@
                 try {
                     const privateEntriesPath = `/artifacts/${appId}/users/${userId}/sportEntries`;
                     await addDoc(collection(db, privateEntriesPath), entry);
+                    // Nach Hinzufügen: Startdatum neu berechnen, falls es der erste Eintrag war
                     await updateLeaderboardStats(userId, currentUser);
                     showToast("Sporteintrag hinzugefügt!", "success");
                     await loadAllData();
@@ -430,12 +431,47 @@
                     console.error("Fehler beim Aktualisieren des Leaderboards:", e);
                 }
             }
+
+            /**
+             * Ermittelt den Challenge-Zeitraum (Start- und Enddatum) basierend auf den Einträgen.
+             * @param {Array<Object>} entries - Die Sporteinträge des Benutzers.
+             * @returns {{startDate: Date, endDate: Date}}
+             */
+            function getChallengePeriod(entries) {
+                const defaultStartDate = GOAL_START_DATE;
+                let startDate = defaultStartDate;
+
+                const validEntries = entries.filter(e => {
+                    const date = e.timestamp.toDate ? e.timestamp.toDate() : new Date(e.timestamp);
+                    return date >= defaultStartDate;
+                });
+
+                if (validEntries.length > 0) {
+                    const minDate = validEntries.reduce((min, entry) => {
+                        const date = entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
+                        return date < min ? date : min;
+                    }, new Date(validEntries[0].timestamp.toDate ? validEntries[0].timestamp.toDate() : new Date(validEntries[0].timestamp)));
+                    
+                    // Der Startpunkt ist der früheste Eintrag, jedoch nicht vor dem offiziellen Startdatum
+                    startDate = minDate < defaultStartDate ? defaultStartDate : minDate;
+                }
+                
+                // Das Challenge-Jahr endet 1 Jahr nach dem effektiven Startdatum
+                const endDate = new Date(startDate);
+                endDate.setFullYear(startDate.getFullYear() + 1);
+                
+                return { startDate, endDate };
+            }
             
             /** Lädt alle notwendigen Daten aus der DB und aktualisiert die UI */
             async function loadAllData() {
                 try {
                     appContainer.innerHTML = `<p class="text-center text-slate-400">Lade App-Daten...</p>`;
                     entries = await getSportEntries(userId);
+
+                    // NEU: Setze das Challenge-Startdatum für den eingeloggten Benutzer
+                    userChallengeStartDate = getChallengePeriod(entries).startDate;
+
                     // Lade benutzerdefinierte Sportarten und füge sie zu den Standard-Sportarten hinzu
                     const userSports = await getUserDefinedSports(userId);
                     allSports = { ...SPORT_WEIGHTS, ...userSports };
@@ -522,6 +558,8 @@
             function renderApp() {
                 // NEU: Entferne die globale Profil-Sektion, da sie nun in der App-Sektion liegt
                 document.getElementById('profile-section')?.classList.add('hidden');
+
+                const { startDate, endDate } = getChallengePeriod(entries); // Holen Sie das Challenge-Enddatum des Benutzers
 
                 appContainer.innerHTML = `
                     <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
@@ -680,6 +718,12 @@
                                     <h2 class="text-xl sm:text-2xl font-bold text-white mb-3">Dein Profil</h2>
                                     <h3 class="text-xl font-bold text-white mb-2 sm:mb-0">Spitzname: <span class="text-primary" id="profile-nickname-section"></span></h3>
                                     
+                                    <!-- NEUE ANZEIGE DES INDIVIDUELLEN STARTDATUMS -->
+                                    <p class="text-sm text-slate-400 mt-2">
+                                        Challenge Start: <span class="text-white font-semibold" id="challenge-start-date">${userChallengeStartDate.toLocaleDateString('de-DE')}</span>
+                                        (Ende: <span class="text-white font-semibold">${getChallengePeriod(entries).endDate.toLocaleDateString('de-DE')}</span>)
+                                    </p>
+
                                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4">
                                         <p class="text-sm text-slate-400 mb-3 sm:mb-0">
                                             Deine volle ID (zum Synchronisieren): 
@@ -837,17 +881,44 @@
                            </svg>`
             };
             
-            /** Berechnet den Fortschritt beim Krafttraining über den gesamten Zeitraum. */
-            function calculateStrengthTrainingProgress(entries) {
+            /** * Hilfsfunktion zur Berechnung des Soll-Fortschritts für die Minuten. 
+             * @param {number} goalMinutes - Das gesamte Minuten-Ziel (8000 oder 15000).
+             * @param {Date} startDate - Das Challenge Startdatum.
+             * @param {Date} endDate - Das Challenge Enddatum.
+             * @returns {{requiredProgressPercentage: number, requiredMinutes: number}}
+             */
+            function calculateRequiredProgress(goalMinutes, startDate, endDate) {
                 const now = new Date();
-                const startDate = GOAL_START_DATE;
+                const totalDurationMs = endDate.getTime() - startDate.getTime();
+                const elapsedTimeMs = now.getTime() - startDate.getTime();
+                
+                let requiredProgressPercentage = 0;
+                let requiredMinutes = 0;
+
+                if (totalDurationMs > 0 && elapsedTimeMs > 0) {
+                    const clampedElapsedTimeMs = Math.min(elapsedTimeMs, totalDurationMs); 
+                    requiredProgressPercentage = (clampedElapsedTimeMs / totalDurationMs) * 100;
+                    requiredMinutes = (requiredProgressPercentage / 100) * goalMinutes;
+                } else if (elapsedTimeMs <= 0) {
+                     requiredProgressPercentage = 0; // Challenge hat noch nicht begonnen (nach Startdatum des Users)
+                } else if (elapsedTimeMs >= totalDurationMs) {
+                    requiredProgressPercentage = 100;
+                    requiredMinutes = goalMinutes;
+                }
+                return { requiredProgressPercentage, requiredMinutes };
+            }
+
+            /** Berechnet den Fortschritt beim Krafttraining über den gesamten Zeitraum. */
+            function calculateStrengthTrainingProgress(entries, startDate, endDate) {
+                const now = new Date();
                 const requiredWeeklyRate = 2; // WHO requirement
+                const totalDurationMs = endDate.getTime() - startDate.getTime();
                 
                 // 1. Calculate Actual Strength Units achieved in the challenge window (unique days)
                 const strengthUnitsAchieved = new Set();
                 entries.forEach(entry => {
                     const entryDate = entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
-                    // Ensure entry is within the overall challenge period and is a strength sport
+                    // Ensure entry is within the effective challenge period and is a strength sport
                     if (STRENGTH_SPORTS.includes(entry.sport) && entryDate >= startDate && entryDate <= now) {
                         // Count unique days (date part only) as 1 unit
                         strengthUnitsAchieved.add(entryDate.toISOString().split('T')[0]);
@@ -861,15 +932,14 @@
                 
                 let requiredUnits = 0;
                 
-                if (elapsedMs > 0 && TOTAL_DURATION_MS > 0) {
-                    // Days elapsed since start (clamped at total duration to avoid future calculation)
-                    const elapsedDays = Math.min(elapsedMs / (1000 * 60 * 60 * 24), TOTAL_DURATION_MS / (1000 * 60 * 60 * 24));
+                if (elapsedMs > 0 && totalDurationMs > 0) {
+                    const elapsedDays = Math.min(elapsedMs / (1000 * 60 * 60 * 24), totalDurationMs / (1000 * 60 * 60 * 24));
                     
                     // Required strength units = (Elapsed Days / 7 days) * 2 units
                     requiredUnits = (elapsedDays / 7) * requiredWeeklyRate;
-                } else if (elapsedMs >= TOTAL_DURATION_MS) {
-                    // If challenge is over, goal is the total maximum days (52 weeks * 2 units)
-                    requiredUnits = (TOTAL_DURATION_MS / (1000 * 60 * 60 * 24) / 7) * requiredWeeklyRate; 
+                } else if (elapsedMs >= totalDurationMs) {
+                    // If challenge is over, goal is the total maximum days
+                    requiredUnits = (totalDurationMs / (1000 * 60 * 60 * 24) / 7) * requiredWeeklyRate; 
                 }
                 
                 return { actualUnits: actualUnits, requiredUnits: requiredUnits };
@@ -881,8 +951,10 @@
              * @param {Array<Object>} entries - Die Sporteinträge des Benutzers.
              */
             function generateCoachAdviceHtml(focus, entries) {
-                const { requiredProgressPercentage: required8k } = calculateRequiredProgress(GOAL_MINUTES);
-                const { requiredProgressPercentage: required15k } = calculateRequiredProgress(WHO_GOAL_MINUTES);
+                const { startDate, endDate } = getChallengePeriod(entries); // Holen Sie den dynamischen Zeitraum
+
+                const { requiredProgressPercentage: required8k } = calculateRequiredProgress(GOAL_MINUTES, startDate, endDate);
+                const { requiredProgressPercentage: required15k } = calculateRequiredProgress(WHO_GOAL_MINUTES, startDate, endDate);
                 
                 const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
                 
@@ -892,7 +964,7 @@
                 const minutesLag8k = required8k - progress8k;
                 const minutesLag15k = required15k - progress15k;
 
-                const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(entries);
+                const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(entries, startDate, endDate);
                 const strengthLag = requiredUnits - actualUnits;
 
                 let adviceHeadline = "";
@@ -911,20 +983,16 @@
                     if (progress8k >= 100) {
                         adviceHeadline = "Ziel A erreicht! Du bist bereits fit.";
                         headlineColor = "text-accent";
-                        adviceIcon = COACH_ICONS.POSITIVE;
                         adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein Basis-Ziel von 8.000 Minuten bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Stretch Goal anzuvisieren.</p>`;
                     } else if (minutesLag8k > 5) {
                         adviceHeadline = "Aufholen nötig: WHO aktiv Ziel in Gefahr.";
                         headlineColor = "text-secondary";
-                        adviceIcon = COACH_ICONS.NEGATIVE;
-                        const lagDetail = `<span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span>`;
-                        adviceTextHtml = `<p class="text-slate-300">Du bist im Rückstand! Der Plan läuft dir mit ${lagDetail} Vorsprung davon. Hol dir deine Basis-Gesundheit zurück. Konzentriere dich auf Regelmäßigkeit.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Du bist im Rückstand! Der Plan läuft dir mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Hol dir deine Basis-Gesundheit zurück. Konzentriere dich auf Regelmäßigkeit.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${getTopSport()}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
                     } else {
                         adviceHeadline = "Im Zeitplan: WHO aktiv Ziel auf Kurs.";
                         headlineColor = "text-primary";
-                        adviceIcon = COACH_ICONS.POSITIVE;
                         adviceTextHtml = `<p class="text-slate-300">Perfekt! Du bist aktuell im Zeitplan, um das 8.000-Minuten-Basis-Ziel zu erreichen. Halte diesen Rhythmus bei, um dein Fundament zu sichern.</p>`;
                     }
 
@@ -933,39 +1001,30 @@
                     if (strengthLag > 10) {
                         adviceHeadline = "Dringend: Krafttraining nachholen!";
                         headlineColor = "text-secondary";
-                        adviceIcon = COACH_ICONS.NEGATIVE;
-                        const lagDetail = `<span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span>`;
-                        adviceTextHtml = `<p class="text-slate-300">Deine Ausdauer ist super, aber dein Krafttraining vernachlässigst du. Du liegst um ${lagDetail} hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Deine Ausdauer ist super, aber dein Krafttraining vernachlässigst du. Du liegst um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span> hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Starte diese Woche mit <span class="font-bold">zwei 15-minütigen</span> Yoga- oder Krafttrainingseinheiten (z.B. HIIT). Priorität: Kraft!</p>`;
                     } else if (progress15k >= 100) {
                         adviceHeadline = "Grandios! Du bist 'fit & stark'.";
                         headlineColor = "text-accent";
-                        adviceIcon = COACH_ICONS.POSITIVE;
                         adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Du hast das anspruchsvolle 15.000-Minuten-Stretch Goal erreicht. Du bist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
                     } else if (minutesLag15k > 5) {
                         adviceHeadline = "Top-Ziel in Sicht: Intensität erhöhen.";
                         headlineColor = "text-primary";
-                        adviceIcon = COACH_ICONS.POSITIVE;
-                        const lagDetail = `<span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span>`;
-                        adviceTextHtml = `<p class="text-slate-300">Du bist auf dem Weg, aber das 15.000-Minuten-Ziel läuft dir mit ${lagDetail} Vorsprung davon. Du musst mehr Minunten pro Woche sammeln, um aufzuholen.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Du bist auf dem Weg, aber das 15.000-Minuten-Ziel läuft dir mit <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span> Vorsprung davon. Du musst mehr Minunten pro Woche sammeln, um aufzuholen.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und füge eine <span class="font-bold">zweite Session</span> pro Woche ein.</p>`;
                     } else {
                         adviceHeadline = "Du bist voll im Flow! Weiter so!";
                         headlineColor = "text-primary";
-                        adviceIcon = COACH_ICONS.POSITIVE;
                         adviceTextHtml = `<p class="text-slate-300">Du hältst den Rhythmus! Du bist gut aufgestellt, um sowohl deine Krafttrainings-Einheiten zu absolvieren als auch das anspruchsvolle 15.000-Minuten-Ziel zu erreichen.</p>`;
                     }
                 }
                 
-                // Final HTML structure for the coach container
+                // Final HTML structure for the coach container - ICON REMOVED
                 return `
                     <div class="card bg-slate-800 p-5 rounded-xl border border-slate-700 mt-4">
                         <div class="flex items-center space-x-3 pb-2 border-b border-slate-700 mb-3">
-                            <span class="${headlineColor}">
-                                ${adviceIcon}
-                            </span>
                             <h3 class="text-xl font-bold text-white">${adviceHeadline}</h3>
                             <span class="text-xs text-primary bg-slate-700 px-2 py-1 rounded-full font-semibold ml-auto">Coach</span>
                         </div>
@@ -1003,25 +1062,6 @@
             function formatUserId(uid) {
                 if (!uid) return 'N/A';
                 return uid.substring(0, 8); // Zeigt die ersten 8 Zeichen der UID
-            }
-
-            /** Hilfsfunktion zur Berechnung des Soll-Fortschritts für die Minuten. */
-            function calculateRequiredProgress(goalMinutes) {
-                const now = new Date();
-                const elapsedTimeMs = now.getTime() - GOAL_START_DATE.getTime();
-                
-                let requiredProgressPercentage = 0;
-                let requiredMinutes = 0;
-
-                if (elapsedTimeMs > 0 && TOTAL_DURATION_MS > 0) {
-                    const clampedElapsedTimeMs = Math.min(elapsedTimeMs, TOTAL_DURATION_MS); 
-                    requiredProgressPercentage = (clampedElapsedTimeMs / TOTAL_DURATION_MS) * 100;
-                    requiredMinutes = (requiredProgressPercentage / 100) * goalMinutes;
-                } else if (elapsedTimeMs >= TOTAL_DURATION_MS) {
-                    requiredProgressPercentage = 100;
-                    requiredMinutes = goalMinutes;
-                }
-                return { requiredProgressPercentage, requiredMinutes };
             }
 
             /** Rendert die Sportarten-Dropdown-Liste neu */
@@ -1093,8 +1133,10 @@
 
                 const isWeightedGoal = idSuffix === '8000'; // Nur das 8000er Ziel hat Umschalt-Option und gewichtete Minuten
                 const currentView = isWeightedGoal && isPersonalView ? myProgressView : 'minutes';
+
+                const { startDate, endDate } = getChallengePeriod(myEntries); // Holen Sie den dynamischen Zeitraum
                 
-                const { requiredProgressPercentage, requiredMinutes } = calculateRequiredProgress(goalMinutes);
+                const { requiredProgressPercentage, requiredMinutes } = calculateRequiredProgress(goalMinutes, startDate, endDate);
                 
                 // --- BERECHNUNG: Ist-Fortschritt ---
                 const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
@@ -1149,7 +1191,7 @@
                 // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL und nur in eigener Ansicht) ---
                 let strengthCounter = '';
                 if (idSuffix === '15000' && isPersonalView) {
-                    const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(myEntries); // GEÄNDERT: Variablenamen
+                    const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(myEntries, startDate, endDate); 
                     const isGoalMet = actualUnits >= requiredUnits;
                     const strengthTooltipContent = `Eingerechnete Sportarten: ${STRENGTH_SPORTS.join(', ')}`;
                     
