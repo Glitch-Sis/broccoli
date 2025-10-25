@@ -520,17 +520,17 @@
                     <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
                         <!-- Navigationsleiste -->
                         <nav class="bg-slate-700 rounded-xl p-2 flex flex-col sm:flex-row justify-start gap-2">
-                            <button data-section="dashboard" class="nav-button bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Dashboard</button>
-                            <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sport tracken</button>
-                            <button data-section="add-sport" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
-                            <button data-section="about-app" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Über die App</button>
+                            <button data-section="dashboard" class="nav-button text-sm sm:text-base bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Dashboard</button>
+                            <button data-section="add-entry" class="nav-button text-sm sm:text-base bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sport tracken</button>
+                            <button data-section="add-sport" class="nav-button text-sm sm:text-base bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
+                            <button data-section="about-app" class="nav-button text-sm sm:text-base bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Über die App</button>
                         </nav>
                         <!-- Abschnitt für das Dashboard -->
                         <div id="dashboard-section" class="space-y-6">
                             
                             <!-- Teilnehmer Abschnitt (Rangliste, AN DIE SPITZE VERSCHOBEN) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Teilnehmer</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Teilnehmer</h2>
                                 <div id="leaderboard" class="space-y-4">
                                     <!-- Die Rangliste wird hier geladen -->
                                 </div>
@@ -538,13 +538,13 @@
                             
                             <!-- Fortschritt Abschnitt (8.000 Min) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">WHO gesund aktiv</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">WHO gesund aktiv</h2>
                                 <div id="progress-8000-content"></div> 
                             </div>
                             
                             <!-- Fortschritt Abschnitt (15.000 Min WHO) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">WHO fit & stark</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">WHO fit & stark</h2>
                                 <div id="progress-15000-content"></div> 
                             </div>
                             
@@ -552,23 +552,23 @@
                             <div class="card bg-slate-700 p-6 rounded-xl">
                                 <h3 class="text-lg font-bold text-white mb-2">Aktivität (Ungewichtete Minuten)</h3>
                                 <div class="flex justify-center gap-2 mb-4">
-                                    <button data-timeframe="week" class="timeframe-btn bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
-                                    <button data-timeframe="month" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
-                                    <button data-timeframe="year" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
+                                    <button data-timeframe="week" class="timeframe-btn text-sm bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
+                                    <button data-timeframe="month" class="timeframe-btn text-sm bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
+                                    <button data-timeframe="year" class="timeframe-btn text-sm bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
                                 </div>
                                 <canvas id="weekly-chart" class="w-full h-48"></canvas>
                             </div>
 
                             <!-- Minuten pro Sportart Auswertung -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
                                 <div id="sport-summary-list" class="space-y-2">
                                     <!-- Der Inhalt wird hier geladen -->
                                 </div>
                             </div>
                             <!-- Letzte Aktivitäten Abschnitt -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
                                 <div id="recent-activities" class="space-y-4">
                                     <!-- Die Aktivitäten werden hier geladen -->
                                 </div>
@@ -576,7 +576,7 @@
                             
                              <!-- Personal Coach Abschnitt (NEU & EIGENSTÄNDIG) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4 flex justify-between items-center">
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4 flex justify-between items-center">
                                     Dein Personal Coach 
                                     <span class="text-xs text-primary bg-slate-800 px-2 py-1 rounded-full font-semibold">Beta</span>
                                 </h2>
@@ -589,7 +589,7 @@
                         <!-- Abschnitt zum Eintragen von Sport -->
                         <div id="add-entry-section" class="hidden">
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Sport hinzufügen</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Sport hinzufügen</h2>
                                 <form id="add-entry-form" class="space-y-4">
                                     <div>
                                         <label for="sport-select" class="block text-slate-300 font-semibold mb-1">Sportart</label>
@@ -599,18 +599,19 @@
                                     </div>
                                     <div>
                                         <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
+                                        <!-- MOBILE FIX: Nutze w-full und p-3 für bessere Anpassung -->
                                         <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
                                     </div>
                                     <div>
                                         <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
                                         <input type="number" id="minutes-input" value="0" min="0" class="w-full p-3 rounded-lg bg-slate-800 text-white text-center text-lg font-bold border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
                                         <div class="mt-2 grid grid-cols-4 gap-2">
-                                            <button type="button" data-minutes="5" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
-                                            <button type="button" data-minutes="10" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
-                                            <button type="button" data-minutes="15" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
-                                            <button type="button" data-minutes="30" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
-                                            <button type="button" data-minutes="45" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+45</button>
-                                            <button type="button" data-minutes="60" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
+                                            <button type="button" data-minutes="5" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
+                                            <button type="button" data-minutes="10" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
+                                            <button type="button" data-minutes="15" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
+                                            <button type="button" data-minutes="30" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
+                                            <button type="button" data-minutes="45" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+45</button>
+                                            <button type="button" data-minutes="60" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
                                             <button type="button" id="clear-minutes-btn" class="w-full col-span-2 bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
                                         </div>
                                     </div>
@@ -621,7 +622,7 @@
                         <!-- Abschnitt zum Hinzufügen eigener Sportarten -->
                         <div id="add-sport-section" class="hidden">
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Eigene Sportart hinzufügen</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Eigene Sportart hinzufügen</h2>
                                 <form id="add-sport-form" class="space-y-4">
                                     <div>
                                         <label for="new-sport-name" class="block text-slate-300 font-semibold mb-1">Name der Sportart</label>
@@ -671,7 +672,7 @@
                                     
                                 <!-- Dein Profil Sektion -->
                                 <section class="p-6 rounded-xl bg-slate-800 border border-primary">
-                                    <h2 class="text-2xl font-bold text-white mb-3">Dein Profil</h2>
+                                    <h2 class="text-xl sm:text-2xl font-bold text-white mb-3">Dein Profil</h2>
                                     <h3 class="text-xl font-bold text-white mb-2 sm:mb-0">Spitzname: <span class="text-primary" id="profile-nickname-section"></span></h3>
                                     
                                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4">
@@ -829,7 +830,7 @@
                 const strengthLag = requiredDays - actualDays;
                 
                 let adviceHeadline = "Phänomenal! Du bist voll im Flow.";
-                let adviceColor = "text-accent"; // Grün
+                let headlineColor = "text-primary"; 
                 
                 let adviceTextHtml = ''; // Wird für Absätze und formatierte Texte verwendet
                 
@@ -846,19 +847,27 @@
 
                 // --- Auswertung und spezifische Verbesserungsvorschläge ---
                 if (maxLag > 0) {
-                    adviceColor = "text-secondary"; // Rot
+                    headlineColor = "text-secondary"; // Rot für Alarm-Zustand
                     
                     adviceTextHtml += `<h3 class="text-lg font-bold text-white mt-1">Status-Analyse:</h3>`;
-
+                    
+                    let lagDetail = '';
+                    let lagTarget = '';
+                    
                     if (strengthLag === maxLag && strengthLag > 10) { // Fokus auf Krafttraining
                         adviceHeadline = "Hol dir deine Kraft zurück!";
-                        adviceTextHtml += `<p class="text-slate-300">Du bist stark bei der Ausdauer, aber wir sehen eine Lücke im Bereich <span class="font-bold text-secondary">Krafttraining</span>. Die WHO empfiehlt 2 Einheiten pro Woche, aber du liegst um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Tage</span> hinter dem Plan (2x/Woche). Krafttraining ist essenziell für Stabilität!</p>`;
+                        lagTarget = 'Krafttraining';
+                        lagDetail = `<span class="font-bold text-secondary">${strengthLag.toFixed(1)} Tage</span>`;
+                        adviceTextHtml += `<p class="text-slate-300">Du bist stark bei der Ausdauer, aber wir sehen eine Lücke im Bereich <span class="font-bold text-white">${lagTarget}</span>. Die WHO empfiehlt 2 Einheiten pro Woche, aber du liegst um ${lagDetail} hinter dem Plan. Krafttraining ist essenziell für Stabilität!</p>`;
                         
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Beginne diese Woche mit <span class="font-bold">einer 15-minütigen</span> Yoga- oder Krafttrainingseinheit. Wichtig ist die Regelmäßigkeit, nicht die Härte. Du schaffst das!</p>`;
+
                     } else if (minutesLag8k === maxLag && minutesLag8k > 5) { // Fokus auf 8k Minuten
                         adviceHeadline = "Jetzt Gegensteuern! Dein Grundziel ruft.";
-                        adviceTextHtml += `<p class="text-slate-300">Du bist ein Kämpfer, aber der Plan <span class="font-bold">WHO gesund aktiv</span> läuft dir mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Keine Sorge, das holen wir auf!</p>`;
+                        lagTarget = 'WHO gesund aktiv (8.000 Min)';
+                        lagDetail = `<span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span>`;
+                        adviceTextHtml += `<p class="text-slate-300">Du bist ein Kämpfer, aber der Plan <span class="font-bold text-white">${lagTarget}</span> läuft dir mit ${lagDetail} Vorsprung davon. Keine Sorge, das holen wir auf!</p>`;
                         
                         const topSport = Object.keys(myEntries.reduce((acc, entry) => {
                             acc[entry.sport] = (acc[entry.sport] || 0) + entry.minutes;
@@ -867,20 +876,27 @@
                         
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${topSport}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
+                        
                     } else if (minutesLag15k === maxLag && minutesLag15k > 5) { // Fokus auf 15k Minuten
                         adviceHeadline = "Du bist fast am Gipfel! Top-Ziel in Sicht.";
-                        adviceTextHtml += `<p class="text-slate-300">Du hast das 8.000-Minuten-Ziel fest im Griff! Um das anspruchsvolle Ziel <span class="font-bold text-primary">WHO fit & stark</span> zu knacken, müssen wir die Intensität leicht erhöhen. Der Rückstand beträgt <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span>.</p>`;
+                        lagTarget = 'WHO fit & stark (15.000 Min)';
+                        lagDetail = `<span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span>`;
+                        adviceTextHtml += `<p class="text-slate-300">Du hast das 8.000-Minuten-Ziel fest im Griff! Um das anspruchsvolle Ziel <span class="font-bold text-white">${lagTarget}</span> zu knacken, müssen wir die Intensität leicht erhöhen. Der Rückstand beträgt ${lagDetail}.</p>`;
+                        
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und plane eine <span class="font-bold">zweite Session</span> pro Woche ein. Wir lieben Herausforderungen!</p>`;
                     }
                 } else {
                      // Status Gut: Kurze Einschätzung beider Ziele
                     adviceHeadline = "Phänomenal! Du bist voll im Flow.";
+                    headlineColor = "text-primary"; 
+                    
                     adviceTextHtml += `<h3 class="text-lg font-bold text-white mt-1">Status-Analyse:</h3>`;
-                    adviceTextHtml += `<p class="text-slate-300">Herzlichen Glückwunsch! Du liegst bei beiden Minutenzielen (<span class="font-bold">8.000 Min & 15.000 Min</span>) <span class="font-bold text-accent">im Zeitplan</span> und erfüllst die Krafttrainings-Empfehlung. Dein Engagement ist beeindruckend!</p>`;
+                    
+                    adviceTextHtml += `<p class="text-slate-300">Herzlichen Glückwunsch! Du liegst bei <span class="font-bold text-primary">beiden Minutenzielen</span> und bei der <span class="font-bold text-primary">Krafttrainingsempfehlung</span> <span class="font-bold text-accent">im Zeitplan</span>. Dein Engagement ist beeindruckend!</p>`;
                     
                     adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Dein nächster Fokus:</h3>`;
-                    adviceTextHtml += `<p class="text-white">Halte diesen Rhythmus bei und beginne, das 15.000-Minuten-Ziel als deine neue Basis zu sehen. Der Schlüssel ist jetzt Konsistenz und Freude an der Bewegung.</p>`;
+                    adviceTextHtml += `<p class="text-white">Halte diesen Rhythmus bei und beginne, das 15.000-Minuten-Ziel als deine neue Basis zu sehen. Der Schlüssel ist jetzt Konsistenz und Freude an der Bewegung. Finde neue Herausforderungen!</p>`;
                 }
                 
                 // --- Langfristiger Nutzen ---
@@ -896,10 +912,10 @@
                 // --- Ausgabe rendern ---
                 coachEl.innerHTML = `
                     <div class="flex items-center space-x-3 pb-2">
-                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 ${adviceColor}">
+                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 ${headlineColor}">
                             <path fill-rule="evenodd" d="M18.685 19.02a1.75 1.75 0 00.32-1.077c-.125-.975-.382-1.89-.752-2.733.917-.79 1.543-1.815 1.713-2.913a.75.75 0 10-1.472-.379c-.1.385-.292.775-.55 1.082a.75.75 0 00-.094.137c-.77 1.016-1.58 2.05-2.098 3.197.802.43 1.34 1.155 1.5 2.055a.75.75 0 001.446-.247zM20 12.375a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75v-1.5zM12.375 20a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5zM11.25 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77z" clip-rule="evenodd" />
                         </svg>
-                        <h3 class="text-xl font-bold ${adviceColor}">${adviceHeadline}</h3>
+                        <h3 class="text-xl font-bold ${headlineColor}">${adviceHeadline}</h3>
                     </div>
                     ${adviceTextHtml}
                 `;
@@ -1017,6 +1033,12 @@
                 // *** SKALIERUNG FÜR PROPORTIONALITÄT ***
                 const maxGoal = WHO_GOAL_MINUTES;
                 const relativeWidth = (goalMinutes / maxGoal) * 100;
+                
+                // *** SICHTBARKEITS-FIX (mindestens 2% Breite, wenn Fortschritt > 0) ***
+                let actualWidth = Math.min(100, progress);
+                if (progress > 0 && progress < 2) {
+                    actualWidth = 2; 
+                }
 
                 // --- HTML-STRUKTUR & METRIKEN ---
                 let metricBoxes = `
@@ -1027,7 +1049,7 @@
                         </div>
                         <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
                             <div class="text-xs text-slate-400">Soll (${requiredProgressPercentage.toFixed(1)}%)</div>
-                            <div class="text-xl font-bold text-secondary">${requiredMinutes.toFixed(0)} Min</div>
+                            <div class="text-xl font-bold text-white">${requiredMinutes.toFixed(0)} Min</div>
                         </div>
                         <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
                             <div class="text-xs text-slate-400">Status</div>
@@ -1073,7 +1095,7 @@
                             
                             <div class="flex items-center space-x-4 mt-2">
                                 <span class="text-white text-xl font-extrabold">
-                                    <span class="${isGoalMet ? 'text-accent' : 'text-secondary'}">${actualDays.toFixed(0)}</span> / ${requiredDays.toFixed(1)} Tage erreicht
+                                    <span class="text-white">${actualDays.toFixed(0)}</span> / ${requiredDays.toFixed(1)} Tage erreicht
                                 </span>
                             </div>
                         </div>
@@ -1088,7 +1110,7 @@
                     
                     <div style="max-width: ${relativeWidth}%;" class="w-full">
                         <div class="relative h-6 bg-slate-800 rounded-full mb-2 shadow-inner overflow-hidden">
-                            <div id="progress-bar-${idSuffix}" class="h-full ${isGoalReached ? 'bg-primary' : 'bg-accent'} progress-bar-fill rounded-full" style="width: ${Math.min(100, progress)}%;"></div>
+                            <div id="progress-bar-${idSuffix}" class="h-full ${isGoalReached ? 'bg-primary' : 'bg-accent'} progress-bar-fill rounded-full" style="width: ${actualWidth}%;"></div>
                             <div id="target-marker-${idSuffix}" class="absolute top-0 bottom-0 target-marker" title="Soll-Fortschritt" style="left: ${requiredProgressPercentage}%; transform: translateX(-50%);"></div>
                         </div>
                     </div>
@@ -1257,7 +1279,7 @@
                                     </h3>
                                     <div class="space-y-2">
                                         <div class="p-3 rounded-lg bg-slate-700">
-                                            <div class="text-slate-400 text-sm">Minuten (Ungewichtet)</div>
+                                            <div class="text-slate-400 text-sm">Minuten</div>
                                             <div class="text-2xl font-extrabold ${isMinutesLeader ? 'text-primary' : 'text-white'}">
                                                 ${p.minutes.toFixed(0)}
                                                 ${isMinutesLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
@@ -1735,5 +1757,3 @@
     </footer>
 </body>
 </html>
-
-
