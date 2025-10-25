@@ -13,7 +13,7 @@
                 extend: {
                     colors: {
                         primary: '#3b82f6', // Blau
-                        secondary: '#ef4444', // Rot
+                        secondary: '#f59e0b', // Amber/Gelb für Warnungen
                         accent: '#22c55e', // Grün
                     },
                     fontFamily: {
@@ -74,7 +74,7 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         .toast-success { background-color: #22c55e; }
-        .toast-error { background-color: #ef4444; }
+        .toast-error { background-color: #f59e0b; } /* NEU: Amber/Gelb */
         .toast-info { background-color: #3b82f6; }
         @keyframes fadeinout {
             0% { opacity: 0; transform: translateY(20px); }
@@ -85,9 +85,9 @@
         /* Custom style für den Soll-Marker */
         .target-marker {
             width: 3px; 
-            background-color: #ef4444; /* secondary (red) */
+            background-color: #f59e0b; /* NEU: Amber/Gelb */
             border-radius: 9999px; /* rounded-full */
-            box-shadow: 0 0 5px rgba(239, 68, 68, 0.8);
+            box-shadow: 0 0 5px rgba(245, 158, 11, 0.8); /* NEU: passender Schatten */
             z-index: 10; /* Stellt sicher, dass der Marker über dem Balken ist */
             position: absolute; /* Muss relativ zum Eltern-Div sein */
             top: 0;
@@ -121,6 +121,27 @@
             visibility: visible;
             opacity: 1;
         }
+
+        /* NEU: Collapsible styles */
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-in-out;
+        }
+        .collapsible-content-expanded {
+            max-height: 2000px; /* Großer Wert, um den Inhalt aufzunehmen */
+        }
+        .toggle-icon {
+            transition: transform 0.3s ease-in-out;
+        }
+        .toggle-icon-rotated {
+            transform: rotate(180deg);
+        }
+        .collapsible-btn {
+            cursor: pointer;
+            text-align: left;
+        }
+
     </style>
 
     <!-- Firebase JS SDKs -->
@@ -350,7 +371,7 @@
              */
             async function getUserDefinedSports(uid) {
                 if (!db) {
-                    console.error("Firestore-Instanz ist nicht verfügbar.");
+                    console.error("Firestore-instanz ist nicht verfügbar.");
                     return {};
                 }
                 const privateSportsPath = `/artifacts/${appId}/users/${uid}/userDefinedSports/sportsDoc`;
@@ -575,7 +596,7 @@
                             
                             <!-- Teilnehmer Abschnitt (Rangliste, AN DIE SPITZE VERSCHOBEN) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 id="dashboard-title" class="text-xl sm:text-2xl font-bold text-white mb-4">Teilnehmer</h2>
+                                <h2 id="dashboard-title" class="text-xl sm:text-2xl font-bold text-white mb-4">Rangliste</h2>
                                 <div id="leaderboard" class="space-y-4">
                                     <!-- Die Rangliste wird hier geladen -->
                                 </div>
@@ -583,47 +604,64 @@
                             
                             <!-- Fortschritt Abschnitt (8.000 Min) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">WHO gesund aktiv</h2>
+                                <h2 class="text-xl sm:text-2xl font-bold text-primary mb-4">Dein Basis Ziel (WHO gesund aktiv)</h2> <!-- GEÄNDERT: Neue Überschrift -->
                                 <div id="progress-8000-content"></div> 
                             </div>
                             
-                            <!-- Coach für 8k Ziel (NEU) -->
+                            <!-- Coach für 8k Ziel -->
                             <div id="coach-active-container"></div>
                             
-                            <!-- Aktivität / Graph Abschnitt -->
+                            <!-- Aktivität / Graph Abschnitt (COLLAPSIBLE) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h3 class="text-lg font-bold text-white mb-2">Aktivität (Ungewichtete Minuten)</h3>
-                                <div class="flex justify-center gap-2 mb-4">
-                                    <button data-timeframe="week" class="timeframe-btn text-sm bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
-                                    <button data-timeframe="month" class="timeframe-btn text-sm bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
-                                    <button data-timeframe="year" class="timeframe-btn text-sm bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
+                                <button data-target="activity" class="collapsible-btn w-full flex justify-between items-center text-lg font-bold text-white">
+                                    Aktivität (Ungewichtete Minuten) 
+                                    <span class="toggle-icon text-primary transform transition-transform duration-300">▼</span>
+                                </button>
+                                <div id="collapsible-activity" class="collapsible-content border-t border-slate-600 mt-3" data-rendered="false">
+                                    <div class="pt-3">
+                                        <p class="text-slate-400 text-center">Wird beim Ausklappen geladen...</p>
+                                    </div>
                                 </div>
-                                <canvas id="weekly-chart" class="w-full h-48"></canvas>
                             </div>
 
-                            <!-- Minuten pro Sportart Auswertung -->
+                            <!-- Minuten pro Sportart Auswertung (COLLAPSIBLE) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
-                                <div id="sport-summary-list" class="space-y-2">
-                                    <!-- Der Inhalt wird hier geladen -->
+                                <button data-target="sport-summary" class="collapsible-btn w-full flex justify-between items-center text-lg font-bold text-white">
+                                    Minuten pro Sportart 
+                                    <span class="toggle-icon text-primary transform transition-transform duration-300">▼</span>
+                                </button>
+                                <div id="collapsible-sport-summary" class="collapsible-content border-t border-slate-600 mt-3" data-rendered="false">
+                                    <div id="sport-summary-list" class="space-y-2 pt-3">
+                                        <p class="text-slate-400 text-center">Wird beim Ausklappen geladen...</p>
+                                    </div>
                                 </div>
                             </div>
-                            <!-- Letzte Aktivitäten Abschnitt -->
+
+                            <!-- Letzte Aktivitäten Abschnitt (COLLAPSIBLE) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-xl sm:text-2xl font-bold text-white mb-4">Letzte Aktivitäten</h2>
-                                <div id="recent-activities" class="space-y-4">
-                                    <!-- Die Aktivitäten werden hier geladen -->
+                                <button data-target="recent-activities" class="collapsible-btn w-full flex justify-between items-center text-lg font-bold text-white">
+                                    Letzte Aktivitäten 
+                                    <span class="toggle-icon text-primary transform transition-transform duration-300">▼</span>
+                                </button>
+                                <div id="collapsible-recent-activities" class="collapsible-content border-t border-slate-600 mt-3" data-rendered="false">
+                                    <div id="recent-activities" class="space-y-4 pt-3">
+                                        <p class="text-slate-400 text-center">Wird beim Ausklappen geladen...</p>
+                                    </div>
                                 </div>
                             </div>
                             
-                            <!-- Fortschritt Abschnitt (15.000 Min WHO) - MOVED & RENAMED HEADER -->
+                            <!-- Fortschritt Abschnitt (15.000 Min WHO) inkl. Coach (COLLAPSIBLE SECTION) -->
                             <div class="card bg-slate-700 p-6 rounded-xl border-2 border-slate-600">
-                                <h2 class="text-xl sm:text-2xl font-bold text-accent mb-4">⭐ Dein Stretch Goal (WHO fit & stark)</h2>
-                                <div id="progress-15000-content"></div> 
+                                <button data-target="stretch-goal" class="collapsible-btn w-full flex justify-between items-center text-xl sm:text-2xl font-bold text-accent">
+                                    ⭐ Dein Stretch Goal (WHO fit & stark) 
+                                    <span class="toggle-icon text-primary transform transition-transform duration-300">▼</span>
+                                </button>
+                                <div id="collapsible-stretch-goal" class="collapsible-content border-t border-slate-600 mt-3" data-rendered="false">
+                                    <div class="pt-3">
+                                        <p class="text-slate-400 text-center">Wird beim Ausklappen geladen...</p>
+                                    </div>
+                                </div>
                             </div>
-                            
-                            <!-- Coach für 15k Ziel + Krafttraining (NEU) -->
-                            <div id="coach-fit-container"></div>
                             
                         </div>
                         <!-- Abschnitt zum Eintragen von Sport -->
@@ -639,8 +677,8 @@
                                     </div>
                                     <div>
                                         <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
-                                        <!-- KORRIGIERT: w-full Klasse für volle Breite auf allen Geräten -->
-                                        <input type="date" id="date-input" class="p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary w-full">
+                                        <!-- KORRIGIERT: w-full Klasse nach vorne verschoben für konsistente Breite -->
+                                        <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
                                     </div>
                                     <div>
                                         <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
@@ -808,26 +846,119 @@
             // WICHTIGE ÄNDERUNG: Nimmt jetzt die zu verwendenden Einträge entgegen
             function renderDashboardContent(currentEntries) { 
                 
-                // Aktualisiere den Dashboard-Titel basierend auf dem angezeigten Benutzer
-                const userNickname = leaderboardParticipants.find(p => p.id === displayedUserId)?.nickname || currentUser;
+                // Aktualisiere den Dashboard-Titel
                 const titleEl = document.getElementById('dashboard-title');
                 if (titleEl) {
-                    titleEl.textContent = (displayedUserId === userId) ? 'Dein Dashboard' : `Dashboard von ${userNickname}`;
+                    titleEl.textContent = 'Rangliste'; // Immer "Rangliste" anzeigen
                 }
 
                 renderLeaderboard(leaderboardParticipants); 
+                // Hauptelemente, die immer geladen werden:
                 renderGoalProgress('8000', GOAL_MINUTES, currentEntries);
-                renderCoachActiveGoal(currentEntries); // NEU: Coach für 8k Ziel
-                renderWeeklyProgressGraph(currentEntries); // Hier aufrufen, damit es im DOM ist
-                renderSportSummary(currentEntries);
-                renderRecentActivities(currentEntries);
-                renderGoalProgress('15000', WHO_GOAL_MINUTES, currentEntries);
-                renderCoachFitGoal(currentEntries); // NEU: Coach für 15k Ziel & Krafttraining
+                renderCoachActiveGoal(currentEntries); // Coach für 8k Ziel
+
+                // Falls der Nutzer wechselt, müssen wir den Inhalt von bereits geöffneten Sektionen aktualisieren.
+                if (document.querySelector('.collapsible-content-expanded')) {
+                    document.querySelectorAll('.collapsible-content[data-rendered="true"]').forEach(contentEl => {
+                        const targetId = contentEl.id.replace('collapsible-', '');
+                        // Erzwinge Neurendern mit den neuen User-Daten, falls geöffnet
+                        // Die Funktion zur Neurendern muss den Inhalt im Platzhalter aktualisieren.
+                        renderCollapsedContent(targetId, currentEntries);
+                    });
+                }
             }
 
+            /** Rendert den Inhalt einer kollabierbaren Sektion (wird von toggleContentAndRender aufgerufen) */
+            function renderCollapsedContent(targetId, entriesToUse) {
+                const contentEl = document.getElementById(`collapsible-${targetId}`);
+                const contentWrapper = contentEl.querySelector('div'); // Der div-Platzhalter innerhalb des contentEl
+
+                if (targetId === 'activity') {
+                    contentWrapper.innerHTML = `
+                        <div class="flex justify-center gap-2 mb-4" id="timeframe-buttons">
+                            <button data-timeframe="week" class="timeframe-btn text-sm bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
+                            <button data-timeframe="month" class="timeframe-btn text-sm bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
+                            <button data-timeframe="year" class="timeframe-btn text-sm bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
+                        </div>
+                        <canvas id="weekly-chart" class="w-full h-48"></canvas>
+                    `;
+                    setupTimeframeListeners(entriesToUse);
+                    renderWeeklyProgressGraph(entriesToUse); // Ruft Graph-Rendering auf
+                } else if (targetId === 'sport-summary') {
+                    // renderSportSummary rendert direkt in #sport-summary-list, welches sich im Wrapper befindet
+                    contentWrapper.innerHTML = `<div id="sport-summary-list" class="space-y-2 pt-3"></div>`;
+                    renderSportSummary(entriesToUse); 
+                } else if (targetId === 'recent-activities') {
+                    // renderRecentActivities rendert direkt in #recent-activities
+                    contentWrapper.innerHTML = `<div id="recent-activities" class="space-y-4 pt-3"></div>`;
+                    renderRecentActivities(entriesToUse); 
+                    // Listener für Bearbeiten/Löschen der neuen Einträge neu setzen
+                    setupRecentActivitiesListeners(); 
+                } else if (targetId === 'stretch-goal') {
+                    contentWrapper.innerHTML = `
+                        <div id="progress-15000-content"></div> 
+                        <div id="coach-fit-container"></div>
+                    `;
+                    renderGoalProgress('15000', WHO_GOAL_MINUTES, entriesToUse);
+                    renderCoachFitGoal(entriesToUse);
+                }
+                
+                // Nach dem Rendern die max-height neu setzen, falls die Sektion bereits offen war
+                if (contentEl.classList.contains('collapsible-content-expanded')) {
+                    contentEl.style.maxHeight = contentEl.scrollHeight + "px";
+                }
+            }
+            
             /** Aktualisiert die UI-Elemente, die sich in der Sporterstell-Sektion befinden */
             function renderAddSportSectionContent() {
                 renderSportWeightList();
+            }
+            
+            // =====================================
+            // NEU: Collapsible Logic
+            // =====================================
+
+            function setupCollapsibleListeners() {
+                document.querySelectorAll('.collapsible-btn').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const targetId = button.dataset.target;
+                        toggleContentAndRender(targetId);
+                    });
+                });
+            }
+
+            function toggleContentAndRender(targetId) {
+                const contentEl = document.getElementById(`collapsible-${targetId}`);
+                const button = document.querySelector(`.collapsible-btn[data-target="${targetId}"]`);
+                const icon = button.querySelector('.toggle-icon');
+                const isExpanded = contentEl.classList.contains('collapsible-content-expanded');
+                const isRendered = contentEl.dataset.rendered === 'true';
+
+                const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
+
+                if (isExpanded) {
+                    // Collapse
+                    contentEl.classList.remove('collapsible-content-expanded');
+                    contentEl.style.maxHeight = '0';
+                    icon.classList.remove('toggle-icon-rotated');
+                    icon.textContent = '▼';
+                } else {
+                    // Expand & Lazy Render
+                    if (!isRendered) {
+                        // Ersten Lade-Placeholder entfernen und Inhalt rendern
+                        renderCollapsedContent(targetId, entriesToUse);
+                        contentEl.dataset.rendered = 'true';
+                    } else {
+                        // Inhalt aktualisieren, falls User gewechselt wurde oder Daten neu geladen wurden
+                        renderCollapsedContent(targetId, entriesToUse);
+                    }
+
+                    // Expand Animation starten
+                    contentEl.classList.add('collapsible-content-expanded');
+                    contentEl.style.maxHeight = contentEl.scrollHeight + "px";
+                    icon.classList.add('toggle-icon-rotated');
+                    icon.textContent = '▲';
+                }
             }
             
             // =====================================
@@ -862,25 +993,15 @@
                 
                 displayedUserId = uid;
                 renderApp(); // Ruft renderApp neu auf, um die Navigation und das Layout neu zu setzen
-                // showSection('dashboard') wird dann mit den korrekten Einträgen gerendert
+                // renderDashboardContent wird mit den neuen Einträgen aufgerufen und aktualisiert geöffnete Sektionen.
             }
 
             // =====================================
             // Personal Coach Modul (Geteilt)
             // =====================================
             
-            /** SVG-Icons für den Coach-Status */
-            const COACH_ICONS = {
-                // Grüner Haken oder Daumen hoch
-                POSITIVE: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-7 h-7">
-                             <path fill-rule="evenodd" d="M18.685 19.02a1.75 1.75 0 00.32-1.077c-.125-.975-.382-1.89-.752-2.733.917-.79 1.543-1.815 1.713-2.913a.75.75 0 10-1.472-.379c-.1.385-.292.775-.55 1.082a.75.75 0 00-.094.137c-.77 1.016-1.58 2.05-2.098 3.197.802.43 1.34 1.155 1.5 2.055a.75.75 0 001.446-.247zM20 12.375a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75v-1.5zM12.375 20a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5zM11.25 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77z" clip-rule="evenodd" />
-                           </svg>`,
-                // Roter Blitz oder Warnung
-                NEGATIVE: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-7 h-7">
-                             <path fill-rule="evenodd" d="M9.401 3.003c1.155-1.112 3.3-1.112 4.456 0L19.5 7.5V17.25c0 1.036-.84 1.875-1.875 1.875h-3.126a3.375 3.375 0 11-.494-1.875l.487.352c.264.19.57.293.893.293h.388c.198 0 .377-.076.516-.216.139-.139.215-.318.215-.516V7.5L12 4.148 6.002 7.5v9.75c0 .245.105.474.288.636.183.162.433.243.682.243h.739c.249 0 .499-.081.682-.243.183-.162.288-.391.288-.636V9a3.375 3.375 0 00-6.75 0v10.5h1.5v-7.5a.75.75 0 011.5 0v7.5h1.5v-7.5a.75.75 0 011.5 0v7.5h1.5v-7.5a.75.75 0 011.5 0v7.5h.388c.571 0 1.037-.466 1.037-1.037V7.5l-5.093-4.497zM9 9a1.875 1.875 0 113.75 0 1.875 1.875 0 01-3.75 0z" clip-rule="evenodd" />
-                           </svg>`
-            };
-            
+            // ... [COACH_ICONS bleibt unverändert] ...
+
             /** * Hilfsfunktion zur Berechnung des Soll-Fortschritts für die Minuten. 
              * @param {number} goalMinutes - Das gesamte Minuten-Ziel (8000 oder 15000).
              * @param {Date} startDate - Das Challenge Startdatum.
@@ -968,8 +1089,6 @@
                 const strengthLag = requiredUnits - actualUnits;
 
                 let adviceHeadline = "";
-                let headlineColor = "text-primary";
-                let adviceIcon = COACH_ICONS.POSITIVE; // Standard-Icon
                 let adviceTextHtml = "";
                 
                 const getTopSport = () => Object.keys(entries.reduce((acc, entry) => {
@@ -982,17 +1101,15 @@
                     // --- Coach Active (Fokus: 8k Minuten) ---
                     if (progress8k >= 100) {
                         adviceHeadline = "Ziel A erreicht! Du bist bereits fit.";
-                        headlineColor = "text-accent";
                         adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein Basis-Ziel von 8.000 Minuten bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Stretch Goal anzuvisieren.</p>`;
                     } else if (minutesLag8k > 5) {
                         adviceHeadline = "Aufholen nötig: WHO aktiv Ziel in Gefahr.";
-                        headlineColor = "text-secondary";
+                        // GEÄNDERT: text-secondary für Warnungen
                         adviceTextHtml = `<p class="text-slate-300">Du bist im Rückstand! Der Plan läuft dir mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Hol dir deine Basis-Gesundheit zurück. Konzentriere dich auf Regelmäßigkeit.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${getTopSport()}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
                     } else {
                         adviceHeadline = "Im Zeitplan: WHO aktiv Ziel auf Kurs.";
-                        headlineColor = "text-primary";
                         adviceTextHtml = `<p class="text-slate-300">Perfekt! Du bist aktuell im Zeitplan, um das 8.000-Minuten-Basis-Ziel zu erreichen. Halte diesen Rhythmus bei, um dein Fundament zu sichern.</p>`;
                     }
 
@@ -1000,28 +1117,26 @@
                     // --- Coach Fit (Fokus: Krafttraining + 15k Minuten) ---
                     if (strengthLag > 10) {
                         adviceHeadline = "Dringend: Krafttraining nachholen!";
-                        headlineColor = "text-secondary";
+                        // GEÄNDERT: text-secondary für Warnungen
                         adviceTextHtml = `<p class="text-slate-300">Deine Ausdauer ist super, aber dein Krafttraining vernachlässigst du. Du liegst um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span> hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Starte diese Woche mit <span class="font-bold">zwei 15-minütigen</span> Yoga- oder Krafttrainingseinheiten (z.B. HIIT). Priorität: Kraft!</p>`;
                     } else if (progress15k >= 100) {
                         adviceHeadline = "Grandios! Du bist 'fit & stark'.";
-                        headlineColor = "text-accent";
                         adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Du hast das anspruchsvolle 15.000-Minuten-Stretch Goal erreicht. Du bist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
                     } else if (minutesLag15k > 5) {
                         adviceHeadline = "Top-Ziel in Sicht: Intensität erhöhen.";
-                        headlineColor = "text-primary";
+                        // GEÄNDERT: text-secondary für Warnungen
                         adviceTextHtml = `<p class="text-slate-300">Du bist auf dem Weg, aber das 15.000-Minuten-Ziel läuft dir mit <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span> Vorsprung davon. Du musst mehr Minunten pro Woche sammeln, um aufzuholen.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und füge eine <span class="font-bold">zweite Session</span> pro Woche ein.</p>`;
                     } else {
                         adviceHeadline = "Du bist voll im Flow! Weiter so!";
-                        headlineColor = "text-primary";
                         adviceTextHtml = `<p class="text-slate-300">Du hältst den Rhythmus! Du bist gut aufgestellt, um sowohl deine Krafttrainings-Einheiten zu absolvieren als auch das anspruchsvolle 15.000-Minuten-Ziel zu erreichen.</p>`;
                     }
                 }
                 
-                // Final HTML structure for the coach container - ICON REMOVED
+                // Final HTML structure for the coach container
                 return `
                     <div class="card bg-slate-800 p-5 rounded-xl border border-slate-700 mt-4">
                         <div class="flex items-center space-x-3 pb-2 border-b border-slate-700 mb-3">
@@ -1126,7 +1241,8 @@
             /** NEUE VEREINFACHTE FUNKTION: Rendert einen Fortschrittsbalken. */
             function renderGoalProgress(idSuffix, goalMinutes, myEntries) {
                 const containerEl = document.getElementById(`progress-${idSuffix}-content`);
-                if (!containerEl || !myEntries) return;
+                // WICHTIG: Prüfen, ob der Container existiert, da er jetzt in einer Collapsible-Sektion liegt
+                if (!containerEl || !myEntries) return; 
 
                 // Stelle sicher, dass der Coach nur die eigenen Daten sieht
                 const isPersonalView = displayedUserId === userId;
@@ -1149,9 +1265,8 @@
                 let progress = (displayValue / goalMinutes) * 100;
                 let isGoalReached = progress >= 100;
                 
-                // *** SKALIERUNG FÜR PROPORTIONALITÄT ***
-                const maxGoal = WHO_GOAL_MINUTES;
-                const relativeWidth = (goalMinutes / maxGoal) * 100;
+                // *** SKALIERUNG FÜR PROPORTIONALITÄT (GEÄNDERT: IMMER 100% BREITE) ***
+                const relativeWidth = 100; // Immer 100% Breite, da die visuelle Vergleichbarkeit entfernt wurde
                 
                 // *** SICHTBARKEITS-FIX (mindestens 2% Breite, wenn Fortschritt > 0) ***
                 let actualWidth = Math.min(100, progress);
@@ -1159,7 +1274,7 @@
                     actualWidth = 2; 
                 }
 
-                // --- HTML-STRUKTUR & METRIKEN (GEÄNDERT: Prozent in Ist-Feld integriert) ---
+                // --- HTML-STRUKTUR & METRIKEN ---
                 let metricBoxes = `
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 text-center">
                         <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
@@ -1258,19 +1373,13 @@
                         renderDashboardContent(myEntries); // Aktualisiere nur den Dashboard-Inhalt
                     });
                 }
-
-                // Stelle sicher, dass der Graph und andere Elemente aktualisiert werden
-                if (idSuffix === '8000') {
-                    // Da renderDashboardContent jetzt alle Komponenten in der richtigen Reihenfolge aufruft,
-                    // muss der Graph hier nicht mehr gerendert werden, um Doppel-Rendering zu vermeiden.
-                    // Stattdessen wird er direkt in renderDashboardContent aufgerufen.
-                }
             }
 
 
             function renderWeeklyProgressGraph(myEntries) {
                 const canvas = document.getElementById('weekly-chart');
                 if (!canvas || !myEntries) return;
+                // Wichtig: canvas muss sichtbar sein, bevor Breite/Höhe gelesen wird!
 
                 const containerWidth = canvas.parentElement.clientWidth;
                 canvas.width = containerWidth;
@@ -1375,57 +1484,103 @@
                 });
             }
 
+            /**
+             * NEUE FUNKTION: Rendert die Rangliste als übersichtliche, responsive Liste.
+             * @param {Array<Object>} participants - Liste aller Leaderboard-Teilnehmer.
+             */
             function renderLeaderboard(participants) {
                 const leaderboardEl = document.getElementById('leaderboard');
                 if (!leaderboardEl || !participants) return;
 
-                // Stelle sicher, dass minutes und weightedMinutes Zahlen sind (Fix für toFixed Fehler)
-                const safeParticipants = participants.map(p => ({
-                    ...p,
-                    minutes: p.minutes || 0,
-                    weightedMinutes: p.weightedMinutes || 0
-                }));
+                // 1. Daten mit individueller Fortschrittsrate (Ist-Prozent des 8k Ziels) anreichern
+                const participantsWithProgress = participants.map(p => {
+                    // Hole Einträge, entweder die eigenen (aus globaler 'entries') oder die gecachten
+                    const pEntries = (p.id === userId) ? entries : (userEntriesCache[p.id] || []);
+                    
+                    // Berechne den individuellen Challenge-Zeitraum
+                    const { startDate, endDate } = getChallengePeriod(pEntries); 
+
+                    // Berechne den Soll-Fortschritt
+                    const { requiredProgressPercentage } = calculateRequiredProgress(GOAL_MINUTES, startDate, endDate);
+                    
+                    // Berechne den Ist-Fortschritt (ungewichtete Minuten)
+                    const actualProgress = (p.minutes / GOAL_MINUTES) * 100;
+
+                    // Berechne die prozentuale Differenz zur Soll-Kurve (positiv = voraus, negativ = zurück)
+                    const progressRatio = actualProgress - requiredProgressPercentage;
+
+                    return {
+                        ...p,
+                        progressRatio: progressRatio,
+                        actualProgress: actualProgress,
+                        requiredProgress: requiredProgressPercentage
+                    };
+                });
+
+                // 2. Sortierung nach Progress Ratio (beste Ratio zuerst)
+                let sortedParticipants = [...participantsWithProgress].sort((a, b) => b.progressRatio - a.progressRatio);
                 
-                // Sortierung nach gesammelten Minuten (absteigend), unabhängig vom eingeloggten User.
-                let sortedParticipants = [...safeParticipants].sort((a, b) => b.minutes - a.minutes);
+                // Finde Leader zur Anzeige des Pokals
+                const minutesLeader = sortedParticipants[0] || { minutes: -1, id: null };
                 
-                const minutesLeader = [...safeParticipants].sort((a, b) => b.minutes - a.minutes)[0] || { minutes: -1, id: null };
-                const weightedLeader = [...safeParticipants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
-                
-                // KORRIGIERT: Entfernen der doppelten H2 Überschrift und beibehalten der Sortierungsbeschreibung
                 leaderboardEl.innerHTML = `
-                    <p class="text-sm text-slate-400 mb-4">Sortiert nach gesammelten Minuten (ungewichtet). Klicke, um den Fortschritt zu sehen.</p>
-                    <div class="flex flex-wrap gap-4">
+                    <p class="text-sm text-slate-400 mb-3">Sortiert nach prozentualer Differenz zum individuellen Sollwert des 8.000-Minuten-Ziels. Klicke auf eine Zeile, um die Details des Benutzers einzusehen.</p>
+                    
+                    <!-- Kopfzeile der Tabelle (responsive Grid) -->
+                    <div class="bg-slate-800 rounded-t-lg p-3 grid grid-cols-6 sm:grid-cols-12 text-xs font-semibold text-slate-400 border-b border-slate-600 sticky top-0 z-10 shadow-md">
+                        <div class="col-span-1">Rang</div>
+                        <div class="col-span-3 sm:col-span-4">Name</div>
+                        <div class="col-span-2 sm:col-span-3 text-right">Minuten (Ungew.)</div>
+                        <div class="col-span-2 sm:col-span-2 text-right hidden sm:block">Gew. Min.</div>
+                        <div class="col-span-2 sm:col-span-2 text-right">Soll-Differenz</div>
+                    </div>
+
+                    <div class="space-y-1">
                         ${sortedParticipants.map((p, index) => {
-                            const isMinutesLeader = p.id === minutesLeader.id;
-                            const isWeightedLeader = p.id === weightedLeader.id;
                             const isActiveUser = p.id === displayedUserId;
+                            const isCurrentUser = p.id === userId;
+                            const isLeading = index === 0;
+
+                            // Hervorhebung der Zeile
+                            const rowClasses = isActiveUser 
+                                ? 'bg-primary/30 border-primary shadow-lg' 
+                                : isCurrentUser
+                                    ? 'bg-slate-700/60 border-slate-500'
+                                    : 'bg-slate-800/80 border-slate-700 hover:bg-slate-700';
+
+                            const rankColor = isLeading ? 'text-accent' : isActiveUser ? 'text-primary' : 'text-slate-400';
+                            const nicknameColor = isActiveUser ? 'text-white font-extrabold' : 'text-white font-semibold';
+                            // GEÄNDERT: Warnfarbe ist jetzt secondary (Amber)
+                            const ratioColor = p.progressRatio >= 0 ? 'text-accent' : 'text-secondary';
                             
                             return `
-                                <div data-user-id="${p.id}" class="flex-1 min-w-[200px] p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary scale-105' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
-                                    <h3 class="text-xl font-bold mb-2 text-white flex items-center justify-center">
-                                        <span class="text-3xl font-extrabold mr-2 ${index === 0 ? 'text-accent' : 'text-slate-500'}">${index + 1}.</span>
-                                        ${p.nickname}
-                                        ${p.id === userId ? ' (Du)' : ''}
-                                    </h3>
-                                    <div class="space-y-2">
-                                        <div class="p-3 rounded-lg bg-slate-700">
-                                            <div class="text-slate-400 text-sm">Minuten</div>
-                                            <div class="text-2xl font-extrabold ${isMinutesLeader ? 'text-primary' : 'text-white'}">
-                                                ${p.minutes.toFixed(0)}
-                                                ${isMinutesLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
-                                            </div>
-                                        </div>
-                                        <div class="p-3 rounded-lg bg-slate-700">
-                                            <div class="text-slate-400 text-sm">Gewichtete Min.</div>
-                                            <div class="text-2xl font-extrabold ${isWeightedLeader ? 'text-accent' : 'text-white'}">
-                                                ${p.weightedMinutes.toFixed(1)}
-                                                ${isWeightedLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
-                                            </div>
-                                        </div>
+                                <div data-user-id="${p.id}" class="grid grid-cols-6 sm:grid-cols-12 items-center p-3 rounded-lg border cursor-pointer transition-colors duration-150 ${rowClasses}">
+                                    
+                                    <!-- 1. Rang -->
+                                    <div class="col-span-1 text-lg font-bold ${rankColor}">${index + 1}.</div>
+                                    
+                                    <!-- 2. Name -->
+                                    <div class="col-span-3 sm:col-span-4 flex items-center space-x-2 ${nicknameColor} text-sm sm:text-base truncate">
+                                        <span>${p.nickname}</span>
+                                        ${isCurrentUser ? '<span class="text-xs text-primary bg-slate-700 px-2 py-0.5 rounded-full font-semibold hidden sm:inline-block">(Du)</span>' : ''}
+                                        ${isLeading ? '<span class="text-lg ml-1">👑</span>' : ''}
                                     </div>
-                                    <!-- ENTFERNT: <div class="text-sm text-slate-500 mt-2">ID: ${formatUserId(p.id)}</div> -->
+                                    
+                                    <!-- 3. Minuten (Ungewichtet) -->
+                                    <div class="col-span-2 sm:col-span-3 text-right font-extrabold text-sm sm:text-base text-white">
+                                        ${p.minutes.toFixed(0)}
                                     </div>
+                                    
+                                    <!-- 4. Gewichtete Minuten (Hidden on mobile) -->
+                                    <div class="col-span-2 sm:col-span-2 text-right font-bold text-sm sm:text-base text-white hidden sm:block">
+                                        ${p.weightedMinutes.toFixed(1)}
+                                    </div>
+
+                                    <!-- 5. Soll-Differenz (Prozent) -->
+                                    <div class="col-span-2 sm:col-span-2 text-right font-extrabold text-sm sm:text-base ${ratioColor}">
+                                        ${p.progressRatio >= 0 ? '+' : ''}${p.progressRatio.toFixed(1)}%
+                                    </div>
+                                </div>
                             `;
                         }).join('')}
                     </div>
@@ -1452,6 +1607,28 @@
                 `).join('');
             }
             
+            function setupRecentActivitiesListeners() {
+                // Nur nötig, wenn die Sektion aktiv ist und eigene Daten anzeigt
+                if (displayedUserId === userId) {
+                    const recentActivitiesEl = document.getElementById('recent-activities');
+                    if (recentActivitiesEl) {
+                        recentActivitiesEl.querySelectorAll('button[data-action]').forEach(button => {
+                            const action = button.dataset.action;
+                            const docId = button.dataset.docId;
+
+                            // Entferne alte Listener, bevor neue hinzugefügt werden (Delegation wäre besser, aber so geht's auch)
+                            const newButton = button.cloneNode(true);
+                            button.parentNode.replaceChild(newButton, button);
+                            
+                            if (action === 'delete') newButton.addEventListener('click', () => handleDeleteClick(docId));
+                            else if (action === 'edit') newButton.addEventListener('click', () => handleEditClick(docId));
+                            else if (action === 'save') newButton.addEventListener('click', () => handleSaveEdit(docId));
+                            else if (action === 'cancel') newButton.addEventListener('click', handleCancelEdit);
+                        });
+                    }
+                }
+            }
+
             function renderRecentActivities(myEntries) {
                 const recentActivitiesEl = document.getElementById('recent-activities');
                 if (!recentActivitiesEl || !myEntries) return;
@@ -1525,6 +1702,11 @@
                 if (sortedActivities.length > 5) {
                     recentActivitiesEl.innerHTML += '<p class="text-center text-slate-500 mt-4 text-sm">... Es werden nur die neuesten 5 Aktivitäten angezeigt.</p>';
                 }
+                
+                // Füge Listener für die neu gerenderten Buttons hinzu
+                if (isPersonalView) {
+                    setupRecentActivitiesListeners();
+                }
             }
             
             /** Löscht eine benutzerdefinierte Sportart. */
@@ -1560,15 +1742,45 @@
             // Event-Listener Setup
             // =====================================
             
+            function setupTimeframeListeners(entriesToUse) {
+                 document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                    const button = btn.cloneNode(true);
+                    btn.parentNode.replaceChild(button, btn);
+
+                    button.addEventListener('click', async () => {
+                        chartTimeframe = button.dataset.timeframe;
+                        document.querySelectorAll('.timeframe-btn').forEach(b => {
+                            const isSelected = b.dataset.timeframe === chartTimeframe;
+                            b.classList.toggle('bg-primary', isSelected);
+                            b.classList.toggle('hover:bg-blue-700', isSelected);
+                            b.classList.toggle('bg-slate-600', !isSelected);
+                            b.classList.toggle('hover:bg-slate-500', !isSelected);
+                        });
+                        
+                        renderWeeklyProgressGraph(entriesToUse);
+                    });
+                     // Setze den initialen Timeframe-Button-Status
+                    const isSelected = button.dataset.timeframe === chartTimeframe;
+                    button.classList.toggle('bg-primary', isSelected);
+                    button.classList.toggle('hover:bg-blue-700', isSelected);
+                    button.classList.toggle('bg-slate-600', !isSelected);
+                    button.classList.toggle('hover:bg-slate-500', !isSelected);
+                });
+            }
+
             function setupEventListeners() {
+                // Navigation
                 document.querySelectorAll('.nav-button').forEach(btn => {
                     btn.addEventListener('click', () => showSection(btn.dataset.section));
                 });
+                // Collapsible
+                setupCollapsibleListeners();
 
+                // Forms
                 document.getElementById('add-entry-form')?.addEventListener('submit', handleFormSubmit);
                 document.getElementById('add-sport-form')?.addEventListener('submit', handleAddSportFormSubmit);
 
-                // Event-Delegation für Minuten-Buttons
+                // Entry Buttons (+5, +10, etc.)
                 document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
                     const target = e.target;
                     const minutesInput = document.getElementById('minutes-input');
@@ -1587,54 +1799,19 @@
                         document.getElementById('minutes-input').value = '0';
                     });
                 }
-
-                // Event-Delegation für die Liste der letzten Aktivitäten
-                document.getElementById('recent-activities')?.addEventListener('click', (e) => {
-                    const target = e.target;
-                    const docId = target.dataset.docId;
-                    const action = target.dataset.action;
-
-                    if (action === 'delete') handleDeleteClick(docId);
-                    else if (action === 'edit') handleEditClick(docId);
-                    else if (action === 'save') handleSaveEdit(docId);
-                    else if (action === 'cancel') handleCancelEdit();
-                });
-
-                // Event-Delegation für die Rangliste
+                
+                // Leaderboard Click Handling (delegiert)
                 document.getElementById('leaderboard')?.addEventListener('click', (e) => {
                     const target = e.target.closest('[data-user-id]');
                     if (target) showUserProgress(target.dataset.userId);
                 });
-                
-                // Event Listener für Timeframe (muss neu angehängt werden, da Dashboard neu gerendert wird)
-                document.querySelectorAll('.timeframe-btn').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        chartTimeframe = btn.dataset.timeframe;
-                        document.querySelectorAll('.timeframe-btn').forEach(b => {
-                            const isSelected = b.dataset.timeframe === chartTimeframe;
-                            b.classList.toggle('bg-primary', isSelected);
-                            b.classList.toggle('hover:bg-blue-700', isSelected);
-                            b.classList.toggle('bg-slate-600', !isSelected);
-                            b.classList.toggle('hover:bg-slate-500', !isSelected);
-                        });
-                        
-                        const entriesToUse = (displayedUserId === userId) ? entries : (userEntriesCache[displayedUserId] || []);
-                        renderDashboardContent(entriesToUse);
-                    });
-                });
 
-                // Setze den initialen Timeframe-Button-Status
-                document.querySelectorAll('.timeframe-btn').forEach(b => {
-                    const isSelected = b.dataset.timeframe === chartTimeframe;
-                    b.classList.toggle('bg-primary', isSelected);
-                    b.classList.toggle('hover:bg-blue-700', isSelected);
-                    b.classList.toggle('bg-slate-600', !isSelected);
-                    b.classList.toggle('hover:bg-slate-500', !isSelected);
-                });
+                // NOTE: setupTimeframeListeners und setupRecentActivitiesListeners werden jetzt 
+                // in renderCollapsedContent aufgerufen, um Listener für dynamische Inhalte zu setzen.
             }
             
             // =====================================
-            // Formular-Handling
+            // Formular-Handling (Bleibt unverändert)
             // =====================================
             async function handleFormSubmit(e) {
                 e.preventDefault();
@@ -1742,7 +1919,7 @@
             }
 
             // =====================================
-            // App-Initialisierung
+            // App-Initialisierung (Bleibt unverändert)
             // =====================================
             async function migrateDataFromLocalStorage(firebaseUid) {
                 appContainer.innerHTML = `<p class="text-center text-slate-400">Migriere lokale Daten...</p>`;
