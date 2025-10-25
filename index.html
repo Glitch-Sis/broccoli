@@ -86,7 +86,6 @@
         .target-marker {
             width: 3px; 
             background-color: #f59e0b; /* Amber/Gelb */
-            border-radius: 9999px; /* rounded-full */
             box-shadow: 0 0 5px rgba(245, 158, 11, 0.8);
             z-index: 10;
             position: absolute;
@@ -128,7 +127,7 @@
             transition: max-height 0.5s ease-in-out;
         }
         .collapsible-content-expanded {
-            max-height: 9999px; /* ERHÖHT für Coach-Inhalt */
+            max-height: 9999px; /* Erhöht für Coach-Inhalt */
         }
         .toggle-icon {
             transition: transform 0.3s ease-in-out;
@@ -191,7 +190,7 @@
 
             // Speichert die aktuell geladenen Daten
             let entries = [];
-            let leaderboardParticipants = [];
+            let leaderboardParticipants = []; // Enthält jetzt die stabilen, sortierten Metriken
             let userEntriesCache = {}; // Cache für die Einträge anderer Benutzer
             // Hält das tatsächliche Startdatum der Challenge für den eingeloggten Benutzer
             let userChallengeStartDate = GOAL_START_DATE; 
@@ -397,7 +396,7 @@
             }
 
             /**
-             * Ruft die Leaderboard-Daten aus Firestore ab.
+             * Ruft die Leaderboard-Daten aus Firestore ab (nur statische Minuten und Name).
              */
             async function getLeaderboard() {
                 if (!db) {
@@ -485,19 +484,51 @@
             async function loadAllData() {
                 try {
                     appContainer.innerHTML = `<p class="text-center text-slate-400">Lade App-Daten...</p>`;
+                    
+                    // 1. Eigene Einträge und Sportarten laden
                     entries = await getSportEntries(userId);
-
-                    // Setze das Challenge-Startdatum für den eingeloggten Benutzer
                     userChallengeStartDate = getChallengePeriod(entries).startDate;
-
-                    // Lade benutzerdefinierte Sportarten und füge sie zu den Standard-Sportarten hinzu
                     const userSports = await getUserDefinedSports(userId);
                     allSports = { ...SPORT_WEIGHTS, ...userSports };
-                    leaderboardParticipants = await getLeaderboard();
                     
-                    // Setze displayedUserId zurück auf den eigenen Benutzer
-                    displayedUserId = userId; 
+                    // 2. Rohdaten des Leaderboards laden
+                    const rawParticipants = await getLeaderboard();
                     
+                    // 3. NEU: Stabile Berechnung und Sortierung des Leaderboards
+                    const stableLeaderboardData = [];
+                    for (const p of rawParticipants) {
+                        // Hole Einträge (entweder eigene, Cache oder fetch für Freunde)
+                        let pEntries;
+                        if (p.id === userId) {
+                            pEntries = entries; // Eigene Einträge
+                        } else if (userEntriesCache[p.id]) {
+                            pEntries = userEntriesCache[p.id]; // Aus Cache
+                        } else {
+                            // Lade Einträge und cache sie für die Ranglistenberechnung (Startdatum-Ermittlung)
+                            pEntries = await getSportEntries(p.id); 
+                            userEntriesCache[p.id] = pEntries; 
+                        }
+
+                        // Berechne Challenge-Zeitraum basierend auf den Einträgen
+                        const { startDate, endDate } = getChallengePeriod(pEntries); 
+
+                        // Berechne Ratios
+                        const { requiredProgressPercentage } = calculateRequiredProgress(GOAL_MINUTES, startDate, endDate);
+                        const actualProgress = (p.minutes / GOAL_MINUTES) * 100;
+                        const progressRatio = actualProgress - requiredProgressPercentage;
+
+                        stableLeaderboardData.push({
+                            ...p,
+                            progressRatio: progressRatio,
+                            // Speichere die zur Rangberechnung verwendeten Metriken
+                            actualProgress: actualProgress,
+                            requiredProgress: requiredProgressPercentage
+                        });
+                    }
+
+                    // 4. Sortiere die finale Rangliste und speichere sie global
+                    leaderboardParticipants = stableLeaderboardData.sort((a, b) => b.progressRatio - a.progressRatio);
+
                     renderApp();
                 } catch (error) {
                     console.error("Fehler beim Laden der App-Daten: ", error);
@@ -671,7 +702,7 @@
                                     </div>
                                     <div>
                                         <label for="date-input" class="block text-slate-300 font-semibold mb-1">Datum</label>
-                                        <!-- Korrektur für mobile Darstellung (iOS/iPhone) -->
+                                        <!-- Korrektur für mobile Darstellung -->
                                         <input type="date" id="date-input" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary appearance-none">
                                     </div>
                                     <div>
@@ -751,7 +782,7 @@
                                     
                                     <!-- ANZEIGE DES INDIVIDUELLEN STARTDATUMS -->
                                     <p class="text-sm text-slate-400 mt-2">
-                                        Challenge Start: <span class="text-white font-semibold" id="challenge-start-date">${userChallengeStartDate.toLocaleDateString('de-DE')}</span>
+                                        Challenge Start: <span class="text-white font-semibold" id="challenge-start-date">${endDate.toLocaleDateString('de-DE')}</span>
                                         (Ende: <span class="text-white font-semibold">${endDate.toLocaleDateString('de-DE')}</span>)
                                     </p>
 
@@ -845,17 +876,18 @@
                     titleEl.textContent = 'Rangliste'; // Immer "Rangliste" anzeigen
                 }
 
+                // LeaderboardParticipants ist jetzt ein stabiler, sortierter Array
                 renderLeaderboard(leaderboardParticipants); 
+                
                 // Hauptelemente, die immer geladen werden:
                 renderGoalProgress('8000', GOAL_MINUTES, currentEntries);
-                renderCoachActiveGoal(currentEntries); // Coach für 8k Ziel
+                renderCoachActiveGoal(currentEntries); 
 
                 // Falls der Nutzer wechselt, müssen wir den Inhalt von bereits geöffneten Sektionen aktualisieren.
                 if (document.querySelector('.collapsible-content-expanded')) {
                     document.querySelectorAll('.collapsible-content[data-rendered="true"]').forEach(contentEl => {
                         const targetId = contentEl.id.replace('collapsible-', '');
                         // Erzwinge Neurendern mit den neuen User-Daten, falls geöffnet
-                        // Die Funktion zur Neurendern muss den Inhalt im Platzhalter aktualisieren.
                         renderCollapsedContent(targetId, currentEntries);
                     });
                 }
@@ -898,7 +930,7 @@
                 
                 // Nach dem Rendern die max-height neu setzen, falls die Sektion bereits offen war
                 if (contentEl.classList.contains('collapsible-content-expanded')) {
-                    // Erneutes Setzen der scrollHeight, um den neuen Inhalt zu berücksichtigen (Wichtig für Coach Fix)
+                    // Wichtig: setze max-height nach dem Rendern, um die korrekte Scroll-Höhe zu erhalten (Coach Fix)
                     contentEl.style.maxHeight = contentEl.scrollHeight + "px";
                 }
             }
@@ -949,7 +981,7 @@
 
                     // Expand Animation starten
                     contentEl.classList.add('collapsible-content-expanded');
-                    // Wichtig: setze max-height nach dem Rendern, um die korrekte Scroll-Höhe zu erhalten (Coach Fix)
+                    // Wichtig: setze max-height nach dem Rendern, um die korrekte Scroll-Höhe zu erhalten
                     contentEl.style.maxHeight = contentEl.scrollHeight + "px"; 
                     icon.classList.add('toggle-icon-rotated');
                     icon.textContent = '▲';
@@ -962,7 +994,8 @@
 
             /** Stellt den Fortschritt für einen bestimmten Benutzer in der Ansicht dar */
             async function showUserProgress(uid) {
-                if (uid === displayedUserId) return; // Bereits angezeigt
+                // Nur wenn der User wechselt ODER wenn der aktuell angezeigte User neu geladen werden muss (z.B. nach Eintrag)
+                if (uid === displayedUserId && userId === uid) return; 
                 
                 let entriesToDisplay = [];
                 const participant = leaderboardParticipants.find(p => p.id === uid);
@@ -982,8 +1015,9 @@
                     `;
                     
                     // Daten abrufen und in Cache speichern
-                    entriesToDisplay = await getSportEntries(uid);
-                    userEntriesCache[uid] = entriesToDisplay;
+                    pEntries = await getSportEntries(uid); 
+                    userEntriesCache[uid] = pEntries; 
+                    entriesToDisplay = pEntries;
                 }
                 
                 displayedUserId = uid;
@@ -1084,45 +1118,51 @@
                 let adviceHeadline = "";
                 let adviceTextHtml = "";
                 
-                const getTopSport = () => Object.keys(entries.reduce((acc, entry) => {
+                const getTopSport = () => entries.length > 0 ? Object.keys(entries.reduce((acc, entry) => {
                     acc[entry.sport] = (acc[entry.sport] || 0) + entry.minutes;
                     return acc;
-                }, {})).sort((a, b) => entries.filter(e => e.sport === b).length - entries.filter(e => e.sport === a).length)[0] || "Laufen";
+                }, {})).sort((a, b) => entries.filter(e => e.sport === b).length - entries.filter(e => e.sport === a).length)[0] || "Laufen" : "Laufen";
 
 
                 if (focus === 'active') {
                     // --- Coach Active (Fokus: 8k Minuten) ---
-                    if (progress8k >= 100) {
+                    if (entries.length === 0) {
+                        adviceHeadline = "Legen Sie los!";
+                        adviceTextHtml = `<p class="text-slate-300">Es wurden noch keine Einträge für diesen Benutzer gefunden. Tragen Sie jetzt Ihre erste Aktivität ein, um die Challenge zu starten!</p>`;
+                    } else if (progress8k >= 100) {
                         adviceHeadline = "Ziel A erreicht! Du bist bereits fit.";
                         adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein **Basis-Ziel von 8.000 Minuten** bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Stretch Goal anzuvisieren.</p>`;
                     } else if (minutesLag8k > 5) {
                         adviceHeadline = "Aufholen nötig: WHO aktiv Ziel in Gefahr.";
-                        adviceTextHtml = `<p class="text-slate-300">Du bist im Rückstand! Der Plan läuft dir mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Hol dir deine Basis-Gesundheit zurück. Konzentriere dich auf Regelmäßigkeit.</p>`;
-                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
-                        adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${getTopSport()}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Dieser Benutzer ist im Rückstand! Der Plan läuft mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Der Fokus sollte auf Regelmäßigkeit liegen.</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Füge den nächsten <span class="font-bold">${getTopSport()}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
                     } else {
                         adviceHeadline = "Im Zeitplan: WHO aktiv Ziel auf Kurs.";
-                        adviceTextHtml = `<p class="text-slate-300">Perfekt! Du bist aktuell im Zeitplan, um das 8.000-Minuten-Basis-Ziel zu erreichen. Halte diesen Rhythmus bei, um dein Fundament zu sichern.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Perfekt! Dieser Benutzer ist aktuell im Zeitplan, um das 8.000-Minuten-Basis-Ziel zu erreichen. Halten Sie diesen Rhythmus bei, um das Fundament zu sichern.</p>`;
                     }
 
                 } else if (focus === 'fit') {
                     // --- Coach Fit (Fokus: Krafttraining + 15k Minuten) ---
-                    if (strengthLag > 10) {
+                     if (entries.length === 0) {
+                        adviceHeadline = "Zieleingabe ausstehend.";
+                        adviceTextHtml = `<p class="text-slate-300">Füge zuerst Aktivitäten hinzu, um Coach-Feedback zu erhalten.</p>`;
+                    } else if (strengthLag > 10) {
                         adviceHeadline = "Dringend: Krafttraining nachholen!";
-                        adviceTextHtml = `<p class="text-slate-300">Deine Ausdauer ist super, aber dein Krafttraining vernachlässigst du. Du liegst um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span> hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
-                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
+                        adviceTextHtml = `<p class="text-slate-300">Die Ausdauer ist super, aber das Krafttraining wird vernachlässigt. Der Benutzer liegt um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span> hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Starte diese Woche mit <span class="font-bold">zwei 15-minütigen</span> Yoga- oder Krafttrainingseinheiten (z.B. HIIT). Priorität: Kraft!</p>`;
                     } else if (progress15k >= 100) {
-                        adviceHeadline = "Grandios! Du bist 'fit & stark'.";
-                        adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Du hast das anspruchsvolle 15.000-Minuten-Stretch Goal erreicht. Du bist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
+                        adviceHeadline = "Grandios! Der Benutzer ist 'fit & stark'.";
+                        adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Der Benutzer hat das anspruchsvolle 15.000-Minuten-Stretch Goal erreicht. Er ist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
                     } else if (minutesLag15k > 5) {
                         adviceHeadline = "Top-Ziel in Sicht: Intensität erhöhen.";
-                        adviceTextHtml = `<p class="text-slate-300">Du bist auf dem Weg, aber das 15.000-Minuten-Ziel läuft dir mit <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span> Vorsprung davon. Du musst mehr Minunten pro Woche sammeln, um aufzuholen.</p>`;
-                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine Mission:</h3>`;
+                        adviceTextHtml = `<p class="text-slate-300">Der Benutzer ist auf dem Weg, aber das 15.000-Minuten-Ziel läuft mit <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span> Vorsprung davon. Es müssen mehr Minuten pro Woche gesammelt werden, um aufzuholen.</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und füge eine <span class="font-bold">zweite Session</span> pro Woche ein.</p>`;
                     } else {
-                        adviceHeadline = "Du bist voll im Flow! Weiter so!";
-                        adviceTextHtml = `<p class="text-slate-300">Du hältst den Rhythmus! Du bist gut aufgestellt, um sowohl deine Krafttrainings-Einheiten zu absolvieren als auch das anspruchsvolle 15.000-Minuten-Ziel zu erreichen.</p>`;
+                        adviceHeadline = "Voller Flow! Weiter so!";
+                        adviceTextHtml = `<p class="text-slate-300">Der Benutzer hält den Rhythmus! Er ist gut aufgestellt, um sowohl die Krafttrainings-Einheiten zu absolvieren als auch das anspruchsvolle 15.000-Minuten-Ziel zu erreichen.</p>`;
                     }
                 }
                 
@@ -1143,16 +1183,16 @@
             /** Rendert den Coach für das WHO aktiv Ziel (8k). */
             function renderCoachActiveGoal(myEntries) {
                 const container = document.getElementById('coach-active-container');
-                if (!container) return; // Nur prüfen, ob der Container existiert
-                // Coach wird für den aktuell angezeigten User gerendert (Fix 1)
+                if (!container) return; 
+                // Coach wird immer für die übergebenen Einträge gerendert
                 container.innerHTML = generateCoachAdviceHtml('active', myEntries);
             }
 
             /** Rendert den Coach für das WHO fit & stark Ziel (15k + Kraft). */
             function renderCoachFitGoal(myEntries) {
                 const container = document.getElementById('coach-fit-container');
-                if (!container) return; // Nur prüfen, ob der Container existiert
-                // Coach wird für den aktuell angezeigten User gerendert (Fix 1)
+                if (!container) return; 
+                // Coach wird immer für die übergebenen Einträge gerendert
                 container.innerHTML = generateCoachAdviceHtml('fit', myEntries);
             }
             // =====================================
@@ -1224,16 +1264,16 @@
                 });
             }
 
-            /** NEUE VEREINFACHTE FUNKTION: Rendert einen Fortschrittsbalken. */
+            /** Rendert einen Fortschrittsbalken. */
             function renderGoalProgress(idSuffix, goalMinutes, myEntries) {
                 const containerEl = document.getElementById(`progress-${idSuffix}-content`);
-                // WICHTIG: Prüfen, ob der Container existiert, da er jetzt in einer Collapsible-Sektion liegt
+                // WICHTIG: Prüfen, ob der Container existiert
                 if (!containerEl || !myEntries) return; 
 
                 // Stelle sicher, dass der Coach nur die eigenen Daten sieht
                 const isPersonalView = displayedUserId === userId;
 
-                const isWeightedGoal = idSuffix === '8000'; // Nur das 8000er Ziel hat Umschalt-Option und gewichtete Minuten
+                const isWeightedGoal = idSuffix === '8000'; 
                 const currentView = isWeightedGoal && isPersonalView ? myProgressView : 'minutes';
 
                 const { startDate, endDate } = getChallengePeriod(myEntries); // Holen Sie den dynamischen Zeitraum
@@ -1291,7 +1331,9 @@
 
                 // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL und nur in eigener Ansicht) ---
                 let strengthCounter = '';
-                if (idSuffix === '15000' && isPersonalView) {
+                // HINWEIS: Der Krafttraining-Counter wird nur für den aktuell eingeloggten Benutzer angezeigt,
+                // da die WHO-Empfehlung ein individuelles Ziel ist.
+                if (idSuffix === '15000' && isPersonalView) { 
                     const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(myEntries, startDate, endDate); 
                     const isGoalMet = actualUnits >= requiredUnits;
                     const strengthTooltipContent = `Eingerechnete Sportarten: ${STRENGTH_SPORTS.join(', ')}`;
@@ -1472,40 +1514,14 @@
 
             /**
              * Rendert die Rangliste als übersichtliche, responsive Liste.
-             * @param {Array<Object>} participants - Liste aller Leaderboard-Teilnehmer.
+             * @param {Array<Object>} participants - Liste aller Leaderboard-Teilnehmer (jetzt vorsortiert und angereichert).
              */
             function renderLeaderboard(participants) {
                 const leaderboardEl = document.getElementById('leaderboard');
                 if (!leaderboardEl || !participants) return;
 
-                // 1. Daten mit individueller Fortschrittsrate anreichern
-                const participantsWithProgress = participants.map(p => {
-                    // Hole Einträge, entweder die eigenen (aus globaler 'entries') oder die gecachten
-                    const pEntries = (p.id === userId) ? entries : (userEntriesCache[p.id] || []);
-                    
-                    // Berechne den individuellen Challenge-Zeitraum
-                    const { startDate, endDate } = getChallengePeriod(pEntries); 
-
-                    // Berechne den Soll-Fortschritt
-                    const { requiredProgressPercentage } = calculateRequiredProgress(GOAL_MINUTES, startDate, endDate);
-                    
-                    // Berechne den Ist-Fortschritt (ungewichtete Minuten)
-                    const actualProgress = (p.minutes / GOAL_MINUTES) * 100;
-
-                    // Berechne die prozentuale Differenz zur Soll-Kurve (positiv = voraus, negativ = zurück)
-                    const progressRatio = actualProgress - requiredProgressPercentage;
-
-                    return {
-                        ...p,
-                        progressRatio: progressRatio,
-                        actualProgress: actualProgress,
-                        requiredProgress: requiredProgressPercentage
-                    };
-                });
-
-                // 2. Sortierung nach Progress Ratio (beste Ratio zuerst)
-                let sortedParticipants = [...participantsWithProgress].sort((a, b) => b.progressRatio - a.progressRatio);
-                
+                // participants ist jetzt bereits ein stabiler, vorsortierter Array mit progressRatio!
+                let sortedParticipants = participants; 
                 
                 leaderboardEl.innerHTML = `
                     <p class="text-sm text-slate-400 mb-3">Sortiert nach prozentualer Differenz zum individuellen Sollwert des 8.000-Minuten-Ziels. Klicke auf eine Zeile, um die Details des Benutzers einzusehen.</p>
@@ -1534,6 +1550,7 @@
 
                             const rankColor = isLeading ? 'text-accent' : isActiveUser ? 'text-primary' : 'text-slate-400';
                             const nicknameColor = isActiveUser ? 'text-white font-extrabold' : 'text-white font-semibold';
+                            // Nutzt das bereits berechnete progressRatio
                             const ratioColor = p.progressRatio >= 0 ? 'text-accent' : 'text-secondary';
                             
                             return `
@@ -2047,7 +2064,7 @@
     </div>
     
     <!-- Modales Overlay für Warnungen/Meldungen -->
-    <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+    <div id="message-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50 hidden">
         <div id="modal-content-wrapper" class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
         </div>
     </div>
@@ -2060,4 +2077,3 @@
     </footer>
 </body>
 </html>
-
