@@ -94,6 +94,33 @@
             bottom: 0;
             height: 100%;
         }
+        /* NEU: Tooltip-Stil für die Sportarten-Liste (behalten für den Krafttraining-Counter) */
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip-content {
+            visibility: hidden;
+            background-color: #334155;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 10;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            /* Korrektur: Erlaube Umbruch und setze maximale Breite */
+            white-space: normal;
+            max-width: 250px; 
+        }
+        .tooltip-container:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+        }
     </style>
 
     <!-- Firebase JS SDKs -->
@@ -116,13 +143,16 @@
                 'Step Aerobic': 1.6,
                 'HIIT': 1.7,
                 'Kayaking': 1.1,
-                // NEU: Hinzugefügt
+                // Hinzugefügt
                 'Schwertkampf': 1.6, 
                 'Taekwondo': 1.7,
                 'Andere': 1.0
             };
-            const GOAL_MINUTES = 8000;
+            const STRENGTH_SPORTS = ['Krafttraining', 'HIIT', 'Schwertkampf', 'Taekwondo', 'Yoga']; // Liste der Kraftsportarten
             
+            const GOAL_MINUTES = 8000;
+            const WHO_GOAL_MINUTES = 15000; // Zweites Ziel (Maximales Ziel für Skalierung)
+
             // Zieldaten für die Soll-Berechnung (01.09.2025 bis 01.09.2026)
             const GOAL_START_DATE = new Date('2025-09-01T00:00:00Z');
             const GOAL_END_DATE = new Date('2026-09-01T00:00:00Z');
@@ -483,57 +513,52 @@
 
             /** Rendert die Haupt-App. */
             function renderApp() {
+                // NEU: Entferne die globale Profil-Sektion, da sie nun in der App-Sektion liegt
+                document.getElementById('profile-section')?.classList.add('hidden');
+
                 appContainer.innerHTML = `
                     <div class="flex-grow w-full max-w-4xl mx-auto space-y-6">
                         <!-- Navigationsleiste -->
                         <nav class="bg-slate-700 rounded-xl p-2 flex flex-col sm:flex-row justify-start gap-2">
                             <button data-section="dashboard" class="nav-button bg-primary text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Dashboard</button>
-                            <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sportart eintragen</button>
+                            <button data-section="add-entry" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Sport tracken</button>
                             <button data-section="add-sport" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Neue Sportart erstellen</button>
+                            <button data-section="about-app" class="nav-button bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors">Über die App</button>
                         </nav>
                         <!-- Abschnitt für das Dashboard -->
                         <div id="dashboard-section" class="space-y-6">
                             
-                            <!-- Teilnehmer Abschnitt -->
+                            <!-- Teilnehmer Abschnitt (Rangliste, AN DIE SPITZE VERSCHOBEN) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
                                 <h2 class="text-2xl font-bold text-white mb-4">Teilnehmer</h2>
                                 <div id="leaderboard" class="space-y-4">
                                     <!-- Die Rangliste wird hier geladen -->
                                 </div>
                             </div>
-                            <!-- Fortschritt Abschnitt -->
+                            
+                            <!-- Fortschritt Abschnitt (8.000 Min) -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <div class="flex items-center justify-between mb-2">
-                                    <h2 class="text-2xl font-bold text-white">Fortschritt</h2>
-                                </div>
-                                <div class="flex items-center justify-between mb-2 text-sm text-slate-300">
-                                    <span id="my-progress-label">Gesammelte Minuten</span>
-                                    <span id="my-progress-value">0</span>
-                                </div>
-                                <div class="flex justify-center mb-4">
-                                    <button id="toggle-progress-btn" class="text-sm text-slate-400 py-1 px-3 rounded-full border border-slate-600 hover:bg-slate-600 transition-colors">
-                                        Umschalten
-                                    </button>
-                                </div>
-                                
-                                <!-- Fortschrittsbalken (Relative Positionierung für den Marker hinzugefügt) -->
-                                <div class="relative h-6 bg-slate-800 rounded-full mb-4 shadow-inner overflow-hidden">
-                                    <div id="progress-bar" class="h-full bg-accent progress-bar-fill rounded-full" style="width: 0%;"></div>
-                                    <!-- Marker für den Soll-Fortschritt -->
-                                    <div id="target-marker" class="absolute top-0 bottom-0 target-marker" title="Soll-Fortschritt" style="left: 0%;"></div>
-                                </div>
-                                <p id="progress-text" class="text-center text-sm font-semibold text-slate-400"></p>
-                                
-                                <div class="mt-8">
-                                    <h3 class="text-lg font-bold text-white mb-2">Aktivität</h3>
-                                    <div class="flex justify-center gap-2 mb-4">
-                                        <button data-timeframe="week" class="timeframe-btn bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
-                                        <button data-timeframe="month" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
-                                        <button data-timeframe="year" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
-                                    </div>
-                                    <canvas id="weekly-chart" class="w-full h-48"></canvas>
-                                </div>
+                                <h2 class="text-2xl font-bold text-white mb-4">WHO gesund aktiv</h2>
+                                <div id="progress-8000-content"></div> 
                             </div>
+                            
+                            <!-- Fortschritt Abschnitt (15.000 Min WHO) -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4">WHO fit & stark</h2>
+                                <div id="progress-15000-content"></div> 
+                            </div>
+                            
+                            <!-- Aktivität / Graph Abschnitt -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h3 class="text-lg font-bold text-white mb-2">Aktivität (Ungewichtete Minuten)</h3>
+                                <div class="flex justify-center gap-2 mb-4">
+                                    <button data-timeframe="week" class="timeframe-btn bg-primary text-white font-semibold py-1 px-3 rounded-full hover:bg-blue-700 transition-colors">Woche</button>
+                                    <button data-timeframe="month" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Monat</button>
+                                    <button data-timeframe="year" class="timeframe-btn bg-slate-600 text-white font-semibold py-1 px-3 rounded-full hover:bg-slate-500 transition-colors">Jahr</button>
+                                </div>
+                                <canvas id="weekly-chart" class="w-full h-48"></canvas>
+                            </div>
+
                             <!-- Minuten pro Sportart Auswertung -->
                             <div class="card bg-slate-700 p-6 rounded-xl">
                                 <h2 class="text-2xl font-bold text-white mb-4">Minuten pro Sportart</h2>
@@ -548,11 +573,23 @@
                                     <!-- Die Aktivitäten werden hier geladen -->
                                 </div>
                             </div>
+                            
+                             <!-- Personal Coach Abschnitt (NEU & EIGENSTÄNDIG) -->
+                            <div class="card bg-slate-700 p-6 rounded-xl">
+                                <h2 class="text-2xl font-bold text-white mb-4 flex justify-between items-center">
+                                    Dein Personal Coach 
+                                    <span class="text-xs text-primary bg-slate-800 px-2 py-1 rounded-full font-semibold">Beta</span>
+                                </h2>
+                                <div id="personal-coach-advice" class="space-y-3">
+                                    <!-- Beratung wird hier gerendert -->
+                                </div>
+                            </div>
+                            
                         </div>
                         <!-- Abschnitt zum Eintragen von Sport -->
                         <div id="add-entry-section" class="hidden">
                             <div class="card bg-slate-700 p-6 rounded-xl">
-                                <h2 class="text-2xl font-bold text-white mb-4">Sportart hinzufügen</h2>
+                                <h2 class="text-2xl font-bold text-white mb-4">Sport hinzufügen</h2>
                                 <form id="add-entry-form" class="space-y-4">
                                     <div>
                                         <label for="sport-select" class="block text-slate-300 font-semibold mb-1">Sportart</label>
@@ -567,13 +604,14 @@
                                     <div>
                                         <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
                                         <input type="number" id="minutes-input" value="0" min="0" class="w-full p-3 rounded-lg bg-slate-800 text-white text-center text-lg font-bold border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                        <div class="mt-2 grid grid-cols-3 gap-2">
+                                        <div class="mt-2 grid grid-cols-4 gap-2">
                                             <button type="button" data-minutes="5" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
                                             <button type="button" data-minutes="10" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
                                             <button type="button" data-minutes="15" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
                                             <button type="button" data-minutes="30" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
+                                            <button type="button" data-minutes="45" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+45</button>
                                             <button type="button" data-minutes="60" class="minutes-btn w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
-                                            <button type="button" id="clear-minutes-btn" class="w-full bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
+                                            <button type="button" id="clear-minutes-btn" class="w-full col-span-2 bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
                                         </div>
                                     </div>
                                     <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Eintrag hinzufügen</button>
@@ -603,25 +641,80 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- NEUE Sektion für "Über die App" / Profil -->
+                        <div id="about-app-section" class="hidden">
+                            <div class="card bg-slate-700 p-6 rounded-xl border border-slate-600">
+                                
+                                <!-- Über die App Sektion -->
+                                <section class="mb-8">
+                                    <h2 class="text-2xl font-bold text-primary mb-4">Über die App</h2>
+                                    <div class="space-y-4 text-slate-300">
+                                        <p>Hey! Diese App ist dein persönlicher Motivator für die Sport Challenge 2025/26. Dein Ziel: Halte deinen sportlichen Fortschritt fest, messe dich mit Freunden und erreiche die Gesundheitsziele der WHO.</p>
+
+                                        <h3 class="text-xl font-bold text-white mt-4 mb-2">Deine Ziele & die WHO-Empfehlungen</h3>
+                                        <ul class="list-disc list-inside space-y-1 ml-4">
+                                            <li><span class="font-semibold">WHO gesund aktiv:</span> Das Basis-Ziel. Es entspricht der minimal empfohlenen aeroben Aktivität pro Woche, auf ein Jahr hochgerechnet (8.000 Min).</li>
+                                            <li><span class="font-semibold">WHO fit & stark:</span> Das Herausforderungs-Ziel für maximale Gesundheitswirkung (15.000 Min).</li>
+                                            <li><span class="font-semibold">Krafttraining:</span> Die WHO empfiehlt mindestens zweimal pro Woche muskelkräftigende Übungen. Der Counter im Dashboard hilft dir, diesen wöchentlichen Rhythmus zu verfolgen.</li>
+                                        </ul>
+                                        
+                                        <h3 class="text-xl font-bold text-white mt-4 mb-2">Warum die Gewichtungen (x-Faktor)?</h3>
+                                        <p>Nicht jede Minute ist gleich! Die Gewichtungsfaktoren (z.B. Laufen x1.5) spiegeln die geschätzte Intensität wider. Aktivitäten mit höherer Intensität (z.B. Schwimmen oder HIIT) lassen deine gewichteten Minuten schneller wachsen:</p>
+                                        <ul class="list-disc list-inside space-y-1 ml-4">
+                                            <li>Faktoren > 1.0: Höhere Intensität (z.B. Laufen, Schwimmen).</li>
+                                            <li>Faktoren < 1.0: Geringere Intensität (z.b. Yoga, Wandern).</li>
+                                        </ul>
+                                        <p class="text-sm text-slate-400 mt-2">Deine Ranglistenposition zählt immer nur die ungewichteten, realen Minuten, um den Vergleich fair zu halten. Die Gewichtung ist für deine persönliche Motivation da.</p>
+                                    </div>
+                                </section>
+                                    
+                                <!-- Dein Profil Sektion -->
+                                <section class="p-6 rounded-xl bg-slate-800 border border-primary">
+                                    <h2 class="text-2xl font-bold text-white mb-3">Dein Profil</h2>
+                                    <h3 class="text-xl font-bold text-white mb-2 sm:mb-0">Spitzname: <span class="text-primary" id="profile-nickname-section"></span></h3>
+                                    
+                                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4">
+                                        <p class="text-sm text-slate-400 mb-3 sm:mb-0">
+                                            Deine volle ID (zum Synchronisieren): 
+                                            <code id="profile-user-id-section" class="text-xs text-accent select-all font-mono"></code>
+                                        </p>
+                                        <button id="copy-user-id-btn-section" class="bg-primary text-white text-sm font-semibold py-2 px-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                                                <path d="M7 3.75A2.75 2.75 0 019.75 1h5.5A2.75 2.75 0 0118 3.75v8.5A2.75 2.75 0 0115.25 15h-5.5A2.75 2.75 0 017 12.25v-8.5z" />
+                                                <path fill-rule="evenodd" d="M11.375 16.5a1.25 1.25 0 01-1.25-1.25V5.25h1.5v10a.25.25 0 00.25.25h10.25a1.25 1.25 0 01-1.25 1.25h-9.5z" clip-rule="evenodd" />
+                                            </svg>
+                                            <span>ID kopieren</span>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-3">
+                                        <strong>Synchronisation:</strong> Kopiere diese ID. Auf einem <strong>neuen Gerät</strong> kannst du dich dann mit dieser ID statt mit einem neuen Spitznamen anmelden, um deinen bestehenden Account und alle deine Daten nahtlos weiterzuführen.
+                                    </p>
+                                </section>
+                            </div>
+                        </div>
                     </div>
                 `;
                 const dateInput = document.getElementById('date-input');
                 const today = new Date().toISOString().split('T')[0];
-                dateInput.value = today;
+                if (dateInput) dateInput.value = today;
 
-                // --- NEUE LOGIK FÜR PROFIL-SEKTION ---
-                const profileSection = document.getElementById('profile-section');
-                const profileNicknameEl = document.getElementById('profile-nickname');
-                const profileUserIdEl = document.getElementById('profile-user-id');
-                
-                if (profileSection && profileNicknameEl && profileUserIdEl && userId && currentUser) {
+                // --- LOGIK FÜR PROFIL-SEKTION (INNERHALB DER APP) ---
+                const profileNicknameEl = document.getElementById('profile-nickname-section');
+                const profileUserIdEl = document.getElementById('profile-user-id-section');
+                const copyIdBtn = document.getElementById('copy-user-id-btn-section');
+
+                if (profileNicknameEl && profileUserIdEl && userId && currentUser) {
                     profileNicknameEl.textContent = currentUser;
                     profileUserIdEl.textContent = userId;
-                    // Macht den Container sichtbar
-                    profileSection.classList.remove('hidden');
+                    
+                    if (copyIdBtn) {
+                         copyIdBtn.addEventListener('click', () => {
+                            copyToClipboard(userId, 'Volle ID wurde in die Zwischenablage kopiert. Nutze diese, um dich auf einem anderen Gerät anzumelden.');
+                        });
+                    }
                 }
                 // --- ENDE PROFIL-LOGIK ---
-
 
                 setupEventListeners();
                 // Beim Start wird das Dashboard gerendert und damit die Initialdaten geladen
@@ -644,6 +737,7 @@
                 document.getElementById('dashboard-section').classList.toggle('hidden', sectionId !== 'dashboard');
                 document.getElementById('add-entry-section').classList.toggle('hidden', sectionId !== 'add-entry');
                 document.getElementById('add-sport-section').classList.toggle('hidden', sectionId !== 'add-sport');
+                document.getElementById('about-app-section').classList.toggle('hidden', sectionId !== 'about-app');
 
                 // Ruft nur die relevanten Rendering-Funktionen auf
                 if (sectionId === 'dashboard') {
@@ -659,10 +753,13 @@
 
             /** Aktualisiert die UI-Elemente, die sich im Dashboard befinden */
             function renderDashboardContent() {
-                renderMyProgress(entries.filter(entry => entry.userId === displayedUserId));
-                renderSportSummary(entries.filter(entry => entry.userId === displayedUserId));
-                renderRecentActivities(entries.filter(entry => entry.userId === displayedUserId));
-                renderLeaderboard(leaderboardParticipants);
+                const currentEntries = entries.filter(entry => entry.userId === displayedUserId);
+                renderLeaderboard(leaderboardParticipants); // An die Spitze verschoben
+                renderGoalProgress('8000', GOAL_MINUTES, currentEntries);
+                renderGoalProgress('15000', WHO_GOAL_MINUTES, currentEntries); 
+                renderSportSummary(currentEntries);
+                renderRecentActivities(currentEntries);
+                renderPersonalCoach(currentEntries); // NEU: Personal Coach rendern
             }
 
             /** Aktualisiert die UI-Elemente, die sich in der Sporterstell-Sektion befinden */
@@ -671,8 +768,146 @@
             }
             
             // =====================================
-            // UI Rendering und Update Funktionen (Fortsetzung)
+            // Personal Coach Modul
             // =====================================
+
+            /** Berechnet den Fortschritt beim Krafttraining über den gesamten Zeitraum. */
+            function calculateStrengthTrainingProgress(entries) {
+                const now = new Date();
+                const startDate = GOAL_START_DATE;
+                const requiredWeeklyRate = 2; // WHO requirement
+                
+                // 1. Calculate Actual Strength Days achieved in the challenge window
+                const strengthDaysAchieved = new Set();
+                entries.forEach(entry => {
+                    const entryDate = entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
+                    // Ensure entry is within the overall challenge period and is a strength sport
+                    if (STRENGTH_SPORTS.includes(entry.sport) && entryDate >= startDate && entryDate <= now) {
+                        // Count unique days (date part only)
+                        strengthDaysAchieved.add(entryDate.toISOString().split('T')[0]);
+                    }
+                });
+
+                const actualDays = strengthDaysAchieved.size;
+
+                // 2. Calculate Required Strength Days (Soll)
+                const elapsedMs = now.getTime() - startDate.getTime();
+                
+                let requiredDays = 0;
+                
+                if (elapsedMs > 0 && TOTAL_DURATION_MS > 0) {
+                    // Days elapsed since start (clamped at total duration to avoid future calculation)
+                    const elapsedDays = Math.min(elapsedMs / (1000 * 60 * 60 * 24), TOTAL_DURATION_MS / (1000 * 60 * 60 * 24));
+                    
+                    // Required strength days = (Elapsed Days / 7 days) * 2 days
+                    requiredDays = (elapsedDays / 7) * requiredWeeklyRate;
+                } else if (elapsedMs >= TOTAL_DURATION_MS) {
+                    // If challenge is over, goal is the total maximum days (52 weeks * 2 days)
+                    requiredDays = (TOTAL_DURATION_MS / (1000 * 60 * 60 * 24) / 7) * requiredWeeklyRate; 
+                }
+                
+                return { actualDays: actualDays, requiredDays: requiredDays };
+            }
+            
+            /** Rendert den Personal Coach Abschnitt */
+            function renderPersonalCoach(myEntries) {
+                const coachEl = document.getElementById('personal-coach-advice');
+                if (!coachEl) return;
+
+                const { requiredProgressPercentage: required8k, requiredMinutes: required8kMin } = calculateRequiredProgress(GOAL_MINUTES);
+                const { requiredProgressPercentage: required15k, requiredMinutes: required15kMin } = calculateRequiredProgress(WHO_GOAL_MINUTES);
+                
+                const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
+                
+                const progress8k = (totalMinutes / GOAL_MINUTES) * 100;
+                const progress15k = (totalMinutes / WHO_GOAL_MINUTES) * 100;
+                
+                const minutesLag8k = required8k - progress8k;
+                const minutesLag15k = required15k - progress15k;
+
+                const { actualDays, requiredDays } = calculateStrengthTrainingProgress(myEntries);
+                const strengthLag = requiredDays - actualDays;
+                
+                let adviceHeadline = "Phänomenal! Du bist voll im Flow.";
+                let adviceColor = "text-accent"; // Grün
+                
+                let adviceTextHtml = ''; // Wird für Absätze und formatierte Texte verwendet
+                
+                let maxLag = 0; // Größter Rückstand in Prozent (für Minuten) oder Tagen (für Kraft)
+                
+                // Priorität der Analyse: 1. Krafttraining, 2. 8k-Minuten, 3. 15k-Minuten
+                if (strengthLag > 10) { 
+                    maxLag = strengthLag;
+                } else if (minutesLag8k > 5) {
+                    maxLag = minutesLag8k;
+                } else if (minutesLag15k > 5 && GOAL_MINUTES > required8kMin) {
+                     maxLag = minutesLag15k;
+                }
+
+                // --- Auswertung und spezifische Verbesserungsvorschläge ---
+                if (maxLag > 0) {
+                    adviceColor = "text-secondary"; // Rot
+                    
+                    adviceTextHtml += `<h3 class="text-lg font-bold text-white mt-1">Status-Analyse:</h3>`;
+
+                    if (strengthLag === maxLag && strengthLag > 10) { // Fokus auf Krafttraining
+                        adviceHeadline = "Hol dir deine Kraft zurück!";
+                        adviceTextHtml += `<p class="text-slate-300">Du bist stark bei der Ausdauer, aber wir sehen eine Lücke im Bereich <span class="font-bold text-secondary">Krafttraining</span>. Die WHO empfiehlt 2 Einheiten pro Woche, aber du liegst um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Tage</span> hinter dem Plan (2x/Woche). Krafttraining ist essenziell für Stabilität!</p>`;
+                        
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Beginne diese Woche mit <span class="font-bold">einer 15-minütigen</span> Yoga- oder Krafttrainingseinheit. Wichtig ist die Regelmäßigkeit, nicht die Härte. Du schaffst das!</p>`;
+                    } else if (minutesLag8k === maxLag && minutesLag8k > 5) { // Fokus auf 8k Minuten
+                        adviceHeadline = "Jetzt Gegensteuern! Dein Grundziel ruft.";
+                        adviceTextHtml += `<p class="text-slate-300">Du bist ein Kämpfer, aber der Plan <span class="font-bold">WHO gesund aktiv</span> läuft dir mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Keine Sorge, das holen wir auf!</p>`;
+                        
+                        const topSport = Object.keys(myEntries.reduce((acc, entry) => {
+                            acc[entry.sport] = (acc[entry.sport] || 0) + entry.minutes;
+                            return acc;
+                        }, {})).sort((a, b) => myEntries.filter(e => e.sport === b).length - myEntries.filter(e => e.sport === a).length)[0] || "Laufen";
+                        
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Füge deinen nächsten <span class="font-bold">${topSport}</span>-Einheiten <span class="font-bold">jeweils 15 Minuten</span> hinzu. Kleine Steigerungen bringen große Ergebnisse!</p>`;
+                    } else if (minutesLag15k === maxLag && minutesLag15k > 5) { // Fokus auf 15k Minuten
+                        adviceHeadline = "Du bist fast am Gipfel! Top-Ziel in Sicht.";
+                        adviceTextHtml += `<p class="text-slate-300">Du hast das 8.000-Minuten-Ziel fest im Griff! Um das anspruchsvolle Ziel <span class="font-bold text-primary">WHO fit & stark</span> zu knacken, müssen wir die Intensität leicht erhöhen. Der Rückstand beträgt <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span>.</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Deine motivierende Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und plane eine <span class="font-bold">zweite Session</span> pro Woche ein. Wir lieben Herausforderungen!</p>`;
+                    }
+                } else {
+                     // Status Gut: Kurze Einschätzung beider Ziele
+                    adviceHeadline = "Phänomenal! Du bist voll im Flow.";
+                    adviceTextHtml += `<h3 class="text-lg font-bold text-white mt-1">Status-Analyse:</h3>`;
+                    adviceTextHtml += `<p class="text-slate-300">Herzlichen Glückwunsch! Du liegst bei beiden Minutenzielen (<span class="font-bold">8.000 Min & 15.000 Min</span>) <span class="font-bold text-accent">im Zeitplan</span> und erfüllst die Krafttrainings-Empfehlung. Dein Engagement ist beeindruckend!</p>`;
+                    
+                    adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Dein nächster Fokus:</h3>`;
+                    adviceTextHtml += `<p class="text-white">Halte diesen Rhythmus bei und beginne, das 15.000-Minuten-Ziel als deine neue Basis zu sehen. Der Schlüssel ist jetzt Konsistenz und Freude an der Bewegung.</p>`;
+                }
+                
+                // --- Langfristiger Nutzen ---
+                adviceTextHtml += `
+                    <div class="mt-6 pt-4 border-t border-slate-600">
+                        <h3 class="text-lg font-bold text-accent mb-2">Dein langfristiger Gewinn:</h3>
+                        <p class="text-slate-400 text-sm">
+                            Jeder Schritt, den du machst, ist eine Investition in dich selbst. Durch dieses Engagement stärkst du nicht nur deine Muskeln und Ausdauer, sondern verbesserst aktiv deine <span class="font-bold">Herzgesundheit</span>, steigerst dein <span class="font-bold">Energielevel</span> und sicherst dir einen <span class="font-bold">erholsameren Schlaf</span>. Diese Gewohnheit ist dein größter Erfolg – sie hält dich weit über diese Challenge hinaus fit und energiegeladen! 
+                        </p>
+                    </div>
+                `;
+
+                // --- Ausgabe rendern ---
+                coachEl.innerHTML = `
+                    <div class="flex items-center space-x-3 pb-2">
+                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-8 h-8 ${adviceColor}">
+                            <path fill-rule="evenodd" d="M18.685 19.02a1.75 1.75 0 00.32-1.077c-.125-.975-.382-1.89-.752-2.733.917-.79 1.543-1.815 1.713-2.913a.75.75 0 10-1.472-.379c-.1.385-.292.775-.55 1.082a.75.75 0 00-.094.137c-.77 1.016-1.58 2.05-2.098 3.197.802.43 1.34 1.155 1.5 2.055a.75.75 0 001.446-.247zM20 12.375a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75v-1.5zM12.375 20a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-1.5a.75.75 0 00-.75.75v1.5a.75.75 0 00.75.75h1.5zM11.25 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77zM12 4.5c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h.77zM4.5 11.25c0 .723.364 1.378.932 1.753l.053-.028a.75.75 0 00.767-1.375c-.27-.151-.45-.44-.45-.75v-.77c.32 0 .584-.236.654-.537l.006-.027a1.5 1.5 0 00-1.82 1.488c0 .247.165.45.39.45h-.77z" clip-rule="evenodd" />
+                        </svg>
+                        <h3 class="text-xl font-bold ${adviceColor}">${adviceHeadline}</h3>
+                    </div>
+                    ${adviceTextHtml}
+                `;
+            }
+            // =====================================
+            // Ende Personal Coach Modul
+            // =====================================
+            
 
             /** Kürzt die Firebase UID für die Anzeige. */
             function formatUserId(uid) {
@@ -680,13 +915,46 @@
                 return uid.substring(0, 8); // Zeigt die ersten 8 Zeichen der UID
             }
 
+            /** Hilfsfunktion zur Berechnung des Soll-Fortschritts für die Minuten. */
+            function calculateRequiredProgress(goalMinutes) {
+                const now = new Date();
+                const elapsedTimeMs = now.getTime() - GOAL_START_DATE.getTime();
+                
+                let requiredProgressPercentage = 0;
+                let requiredMinutes = 0;
+
+                if (elapsedTimeMs > 0 && TOTAL_DURATION_MS > 0) {
+                    const clampedElapsedTimeMs = Math.min(elapsedTimeMs, TOTAL_DURATION_MS); 
+                    requiredProgressPercentage = (clampedElapsedTimeMs / TOTAL_DURATION_MS) * 100;
+                    requiredMinutes = (requiredProgressPercentage / 100) * goalMinutes;
+                } else if (elapsedTimeMs >= TOTAL_DURATION_MS) {
+                    requiredProgressPercentage = 100;
+                    requiredMinutes = goalMinutes;
+                }
+                return { requiredProgressPercentage, requiredMinutes };
+            }
+
             /** Rendert die Sportarten-Dropdown-Liste neu */
             function renderSportSelect() {
                 const sportSelect = document.getElementById('sport-select');
-                if (sportSelect) {
-                    sportSelect.innerHTML = Object.keys(allSports).map(sport => 
-                        `<option value="${sport}">${sport} (x${allSports[sport]})</option>`
-                    ).join('');
+                // Hinzugefügt für das Bearbeitungs-Dropdown, das nach dem DOM-Update möglicherweise noch existiert
+                const editSportSelect = document.getElementById('edit-sport-select'); 
+
+                const optionsHtml = Object.keys(allSports).map(sport => 
+                    `<option value="${sport}">${sport} (x${allSports[sport]})</option>`
+                ).join('');
+                
+                if (sportSelect) sportSelect.innerHTML = optionsHtml;
+                // Aktualisiere auch das Bearbeitungs-Dropdown, falls es im DOM ist
+                if (editSportSelect) {
+                    const currentEntry = entries.find(e => e.id === editingDocId);
+                    if (currentEntry) {
+                        editSportSelect.innerHTML = Object.keys(allSports).map(sport => 
+                            `<option value="${sport}" ${sport === currentEntry.sport ? 'selected' : ''}>${sport} (x${allSports[sport]})</option>`
+                        ).join('');
+                    } else {
+                        editSportSelect.innerHTML = optionsHtml;
+                    }
                 }
             }
             
@@ -725,83 +993,128 @@
                 });
             }
 
-            /** Zeigt den Fortschritt eines bestimmten Benutzers an. */
-            async function showUserProgress(selectedUserId) {
-                if (selectedUserId === displayedUserId) return;
+            /** NEUE VEREINFACHTE FUNKTION: Rendert einen Fortschrittsbalken. */
+            function renderGoalProgress(idSuffix, goalMinutes, myEntries) {
+                const containerEl = document.getElementById(`progress-${idSuffix}-content`);
+                if (!containerEl || !myEntries) return;
+
+                const isWeighted = idSuffix === '8000'; // Nur das 8000er Ziel hat Umschalt-Option und gewichtete Minuten
+                const currentView = isWeighted ? myProgressView : 'minutes';
                 
-                showToast(`Lade Daten für ${leaderboardParticipants.find(p => p.id === selectedUserId)?.nickname || 'den Benutzer'}`, 'info');
+                const { requiredProgressPercentage, requiredMinutes } = calculateRequiredProgress(goalMinutes);
                 
-                entries = await getSportEntries(selectedUserId);
-                allSports = { ...SPORT_WEIGHTS, ...(await getUserDefinedSports(selectedUserId)) };
-
-                displayedUserId = selectedUserId;
-                renderDashboardContent();
-            }
-
-            function renderMyProgress(myEntries) {
-                const myProgressLabelEl = document.getElementById('my-progress-label');
-                const myProgressValueEl = document.getElementById('my-progress-value');
-                const progressBarEl = document.getElementById('progress-bar');
-                const progressTextEl = document.getElementById('progress-text');
-                const targetMarkerEl = document.getElementById('target-marker');
-
-                if (!myProgressLabelEl || !myProgressValueEl || !progressBarEl || !progressTextEl || !myEntries || !targetMarkerEl) return;
-
-                // --- BERECHNUNG: Soll-Fortschritt (Time-based target) ---
-                const now = new Date();
-                const elapsedTimeMs = now.getTime() - GOAL_START_DATE.getTime();
-                
-                let requiredProgressPercentage = 0;
-                let requiredMinutes = 0;
-
-                if (elapsedTimeMs > 0 && TOTAL_DURATION_MS > 0) {
-                    const clampedElapsedTimeMs = Math.min(elapsedTimeMs, TOTAL_DURATION_MS); 
-                    requiredProgressPercentage = (clampedElapsedTimeMs / TOTAL_DURATION_MS) * 100;
-                    requiredMinutes = (requiredProgressPercentage / 100) * GOAL_MINUTES;
-                } else if (elapsedTimeMs >= TOTAL_DURATION_MS) {
-                    requiredProgressPercentage = 100;
-                    requiredMinutes = GOAL_MINUTES;
-                }
-
-                // --- BERECHNUNG: Ist-Fortschritt (Actual progress) ---
+                // --- BERECHNUNG: Ist-Fortschritt ---
                 const totalMinutes = myEntries.reduce((sum, entry) => sum + entry.minutes, 0);
                 const totalWeightedMinutes = myEntries.reduce((sum, entry) => {
                     const weight = allSports[entry.sport] || 1.0;
                     return sum + (entry.minutes * weight);
                 }, 0);
 
-                let displayValue = (myProgressView === 'minutes') ? totalMinutes : totalWeightedMinutes;
-                let progress = (displayValue / GOAL_MINUTES) * 100;
+                let displayValue = (currentView === 'minutes') ? totalMinutes : totalWeightedMinutes;
+                let progress = (displayValue / goalMinutes) * 100;
+                let isGoalReached = progress >= 100;
                 
-                myProgressLabelEl.textContent = (myProgressView === 'minutes') ? 'Gesammelte Minuten' : 'Gewichtete Minuten';
-                myProgressValueEl.textContent = displayValue.toFixed(myProgressView === 'weighted' ? 1 : 0);
-                progressBarEl.style.width = `${Math.min(100, progress)}%`;
+                // *** SKALIERUNG FÜR PROPORTIONALITÄT ***
+                const maxGoal = WHO_GOAL_MINUTES;
+                const relativeWidth = (goalMinutes / maxGoal) * 100;
 
-                // Marker aktualisieren
-                targetMarkerEl.style.left = `${requiredProgressPercentage}%`;
-                targetMarkerEl.style.transform = `translateX(-50%)`;
-                targetMarkerEl.title = `Soll: ${requiredMinutes.toFixed(0)} Min (${requiredProgressPercentage.toFixed(1)}%)`;
+                // --- HTML-STRUKTUR & METRIKEN ---
+                let metricBoxes = `
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 text-center">
+                        <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
+                            <div class="text-xs text-slate-400">Erreicht (Ist)</div>
+                            <div class="text-xl font-bold ${isGoalReached ? 'text-primary' : 'text-white'}">${displayValue.toFixed(currentView === 'weighted' ? 1 : 0)} Min</div>
+                        </div>
+                        <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
+                            <div class="text-xs text-slate-400">Soll (${requiredProgressPercentage.toFixed(1)}%)</div>
+                            <div class="text-xl font-bold text-secondary">${requiredMinutes.toFixed(0)} Min</div>
+                        </div>
+                        <div class="p-3 rounded-lg bg-slate-800 border border-slate-600">
+                            <div class="text-xs text-slate-400">Status</div>
+                            <div class="text-xl font-bold ${isGoalReached ? 'text-accent' : (progress >= requiredProgressPercentage ? 'text-primary' : 'text-secondary')}">
+                                ${isGoalReached ? 'Ziel erreicht!' : (progress >= requiredProgressPercentage ? 'Im Zeitplan' : 'Aufholen nötig')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Umschalt-Button nur für das 8000er Ziel
+                const toggleButton = isWeighted ? `
+                    <div class="flex justify-center mb-4 items-center space-x-3">
+                        <button id="toggle-progress-btn" data-goal-id="${idSuffix}" class="text-sm text-white py-1 px-3 rounded-full bg-primary hover:bg-blue-700 transition-colors">
+                            Ansicht: ${currentView === 'minutes' ? 'Zu Gewichtete Min. wechseln' : 'Zu Ungewichtete Min. wechseln'}
+                        </button>
+                    </div>
+                ` : `<div class="mb-4"></div>`; // Platzhalter für Konsistenz
 
-                // Text aktualisieren
-                if (myProgressView === 'minutes') {
-                     progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}% | Soll: ${requiredProgressPercentage.toFixed(1)}% (${requiredMinutes.toFixed(0)} Min)`;
-                } else {
-                     progressTextEl.textContent = `Fortschritt: ${progress.toFixed(1)}% (Gewichtet) | Soll (Ungewichtet): ${requiredProgressPercentage.toFixed(1)}% (${requiredMinutes.toFixed(0)} Min)`;
+                // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL) ---
+                let strengthCounter = '';
+                if (idSuffix === '15000') {
+                    const { actualDays, requiredDays } = calculateStrengthTrainingProgress(myEntries);
+                    const isGoalMet = actualDays >= requiredDays;
+                    const strengthTooltipContent = `Eingerechnete Sportarten: ${STRENGTH_SPORTS.join(', ')}`;
+                    
+                    strengthCounter = `
+                        <div class="mt-6 p-4 rounded-xl bg-slate-800 border border-slate-600">
+                            <div class="flex justify-between items-start">
+                                <div class="relative tooltip-container">
+                                    <h3 class="text-lg font-bold text-white mb-1 flex items-center">
+                                        Krafttraining (2x/Woche)
+                                        <span class="ml-2 text-primary cursor-pointer text-sm">
+                                            [i]
+                                            <span class="tooltip-content text-xs">${strengthTooltipContent}</span>
+                                        </span>
+                                    </h3>
+                                </div>
+                                <div class="px-3 py-1 rounded-full text-white font-semibold ${isGoalMet ? 'bg-accent' : 'bg-secondary'} text-sm">
+                                    ${isGoalMet ? 'Im Zeitplan!' : 'Aufholen nötig'}
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center space-x-4 mt-2">
+                                <span class="text-white text-xl font-extrabold">
+                                    <span class="${isGoalMet ? 'text-accent' : 'text-secondary'}">${actualDays.toFixed(0)}</span> / ${requiredDays.toFixed(1)} Tage erreicht
+                                </span>
+                            </div>
+                        </div>
+                    `;
                 }
 
-                // Visuelle Zustände (Ziel erreicht, etc.)
-                if (progress >= 100) {
-                    progressBarEl.classList.remove('bg-accent');
-                    progressBarEl.classList.add('bg-primary', 'animate-pulse-slow');
-                    progressTextEl.textContent = "Ziel erreicht! Herzlichen Glückwunsch! 🎉";
-                } else {
-                    progressBarEl.classList.remove('bg-primary', 'animate-pulse-slow');
-                    progressBarEl.classList.add('bg-accent');
+
+                // --- GESAMTAUSGABE ---
+                containerEl.innerHTML = `
+                    ${metricBoxes}
+                    ${toggleButton}
+                    
+                    <div style="max-width: ${relativeWidth}%;" class="w-full">
+                        <div class="relative h-6 bg-slate-800 rounded-full mb-2 shadow-inner overflow-hidden">
+                            <div id="progress-bar-${idSuffix}" class="h-full ${isGoalReached ? 'bg-primary' : 'bg-accent'} progress-bar-fill rounded-full" style="width: ${Math.min(100, progress)}%;"></div>
+                            <div id="target-marker-${idSuffix}" class="absolute top-0 bottom-0 target-marker" title="Soll-Fortschritt" style="left: ${requiredProgressPercentage}%; transform: translateX(-50%);"></div>
+                        </div>
+                    </div>
+                    
+                    <p class="text-left text-sm font-semibold text-slate-400 mt-0">
+                        Ziel: ${goalMinutes.toLocaleString('de-DE')} Minuten. Aktueller Fortschritt: ${progress.toFixed(1)}%
+                    </p>
+
+                    ${strengthCounter}
+                `;
+                
+                // Event Listener für den Toggle-Button muss neu angehängt werden
+                if (isWeighted) {
+                    document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
+                        myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
+                        renderDashboardContent();
+                    });
                 }
 
-                renderWeeklyProgressGraph(myEntries);
+                // Stelle sicher, dass der Graph und andere Elemente aktualisiert werden
+                if (idSuffix === '8000') {
+                    renderWeeklyProgressGraph(myEntries);
+                }
             }
-            
+
+
             function renderWeeklyProgressGraph(myEntries) {
                 const canvas = document.getElementById('weekly-chart');
                 if (!canvas || !myEntries) return;
@@ -920,40 +1233,38 @@
                     weightedMinutes: p.weightedMinutes || 0
                 }));
                 
-                // *** KORRIGIERT: SORTIERUNG NACH GESAMMELTEN MINUTEN (REAL) ***
+                // Sortierung nach gesammelten Minuten (absteigend), unabhängig vom eingeloggten User.
                 let sortedParticipants = [...safeParticipants].sort((a, b) => b.minutes - a.minutes);
-                
-                const loggedInUser = sortedParticipants.find(p => p.id === userId);
-                // Stellt sicher, dass der eingeloggte Benutzer an erster Stelle steht
-                sortedParticipants = loggedInUser ? [loggedInUser, ...sortedParticipants.filter(p => p.id !== userId)] : sortedParticipants;
                 
                 const minutesLeader = [...safeParticipants].sort((a, b) => b.minutes - a.minutes)[0] || { minutes: -1, id: null };
                 const weightedLeader = [...safeParticipants].sort((a, b) => b.weightedMinutes - a.weightedMinutes)[0] || { weightedMinutes: -1, id: null };
                 
+                // KORRIGIERT: Entfernen der doppelten H2 Überschrift und beibehalten der Sortierungsbeschreibung
                 leaderboardEl.innerHTML = `
+                    <p class="text-sm text-slate-400 mb-4">Sortiert nach gesammelten Minuten (ungewichtet).</p>
                     <div class="flex flex-col sm:flex-row gap-4">
-                        ${sortedParticipants.map(p => {
-                            // Verwende p.minutes und p.weightedMinutes, die jetzt garantiert Zahlen sind
+                        ${sortedParticipants.map((p, index) => {
                             const isMinutesLeader = p.id === minutesLeader.id;
                             const isWeightedLeader = p.id === weightedLeader.id;
                             const isActiveUser = p.id === displayedUserId;
                             
                             return `
                                 <div data-user-id="${p.id}" class="flex-1 p-6 rounded-xl border-2 cursor-pointer transition-all duration-200 ease-in-out ${isActiveUser ? 'border-primary' : 'border-slate-600'} bg-slate-800 text-center relative overflow-hidden hover:scale-105">
-                                    <h3 class="text-xl font-bold mb-2 text-white">
+                                    <h3 class="text-xl font-bold mb-2 text-white flex items-center justify-center">
+                                        <span class="text-3xl font-extrabold mr-2 ${index === 0 ? 'text-accent' : 'text-slate-500'}">${index + 1}.</span>
                                         ${p.nickname}
                                         ${p.id === userId ? ' (Du)' : ''}
                                     </h3>
                                     <div class="space-y-2">
                                         <div class="p-3 rounded-lg bg-slate-700">
-                                            <div class="text-slate-400 text-sm">Gesammelte Minuten</div>
+                                            <div class="text-slate-400 text-sm">Minuten (Ungewichtet)</div>
                                             <div class="text-2xl font-extrabold ${isMinutesLeader ? 'text-primary' : 'text-white'}">
                                                 ${p.minutes.toFixed(0)}
                                                 ${isMinutesLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
                                             </div>
                                         </div>
                                         <div class="p-3 rounded-lg bg-slate-700">
-                                            <div class="text-slate-400 text-sm">Gewichtete Minuten</div>
+                                            <div class="text-slate-400 text-sm">Gewichtete Min.</div>
                                             <div class="text-2xl font-extrabold ${isWeightedLeader ? 'text-accent' : 'text-white'}">
                                                 ${p.weightedMinutes.toFixed(1)}
                                                 ${isWeightedLeader ? '<span class="text-xs ml-1">🏆</span>' : ''}
@@ -983,7 +1294,7 @@
                 summaryEl.innerHTML = sortedSports.map(sport => `
                     <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
                         <span class="text-white font-semibold">${sport}</span>
-                        <span class="text-primary font-bold">${sportMinutes[sport]} Minuten</span>
+                        <span class="text-primary font-bold">${sportMinutes[sport]} Min</span>
                     </div>
                 `).join('');
             }
@@ -994,7 +1305,7 @@
                 
                 const sortedActivities = myEntries.sort((a, b) => (b.timestamp.toDate ? b.timestamp.toDate() : new Date(b.timestamp)) - (a.timestamp.toDate ? a.timestamp.toDate() : new Date(a.timestamp)));
                 
-                // *** KORRIGIERT: Begrenze auf die 5 neuesten Aktivitäten ***
+                // Begrenze auf die 5 neuesten Aktivitäten
                 const limitedActivities = sortedActivities.slice(0, 5);
 
                 if (limitedActivities.length === 0) {
@@ -1004,10 +1315,10 @@
 
                 recentActivitiesEl.innerHTML = limitedActivities.map(activity => {
                     const date = activity.timestamp.toDate ? activity.timestamp.toDate() : new Date(activity.timestamp);
-                    // KORRIGIERT: Zeige nur das Datum an
+                    // Zeige nur das Datum an
                     const dateString = date.toLocaleDateString('de-DE'); 
-                    // const timeString = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
                     const isMyEntry = activity.userId === userId;
+                    const weight = allSports[activity.sport] || 1.0;
                     
                     if (isMyEntry && activity.id === editingDocId) {
                         // Bearbeitungsansicht
@@ -1042,8 +1353,8 @@
                         return `
                             <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-slate-600">
                                 <div>
-                                    <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Minuten</span>
-                                    <span class="text-accent font-semibold">${activity.sport}</span> gemacht.
+                                    <span class="text-white font-semibold">${activity.nickname}</span> hat <span class="text-primary font-bold">${activity.minutes} Min</span>
+                                    <span class="text-accent font-semibold">${activity.sport}</span> (${weight}x) gemacht.
                                 </div>
                                 <div class="flex-shrink-0 text-right">
                                     <span class="text-xs text-slate-500 block mb-1">${dateString}</span>
@@ -1100,24 +1411,6 @@
 
                 document.getElementById('add-entry-form')?.addEventListener('submit', handleFormSubmit);
                 document.getElementById('add-sport-form')?.addEventListener('submit', handleAddSportFormSubmit);
-                document.getElementById('toggle-progress-btn')?.addEventListener('click', () => {
-                    myProgressView = myProgressView === 'minutes' ? 'weighted' : 'minutes';
-                    renderDashboardContent();
-                });
-
-                document.querySelectorAll('.timeframe-btn').forEach(btn => {
-                    btn.addEventListener('click', async () => {
-                        chartTimeframe = btn.dataset.timeframe;
-                        document.querySelectorAll('.timeframe-btn').forEach(b => {
-                            const isSelected = b.dataset.timeframe === chartTimeframe;
-                            b.classList.toggle('bg-primary', isSelected);
-                            b.classList.toggle('hover:bg-blue-700', isSelected);
-                            b.classList.toggle('bg-slate-600', !isSelected);
-                            b.classList.toggle('hover:bg-slate-500', !isSelected);
-                        });
-                        renderDashboardContent();
-                    });
-                });
 
                 // Event-Delegation für Minuten-Buttons
                 document.querySelector('#add-entry-section')?.addEventListener('click', (e) => {
@@ -1157,14 +1450,32 @@
                     if (target) showUserProgress(target.dataset.userId);
                 });
                 
-                // Event-Listener für das Kopieren der vollen User ID
-                const copyIdBtn = document.getElementById('copy-user-id-btn-global');
-                if (copyIdBtn) {
-                    copyIdBtn.addEventListener('click', () => {
-                        // Kopiert die volle, unverkürzte Firebase UID
-                        copyToClipboard(userId, 'Volle ID wurde in die Zwischenablage kopiert. Nutze diese, um dich auf einem anderen Gerät anzumelden.');
+                // Der globale Copy-Button wurde entfernt, da die Sektion verschoben wurde.
+
+                
+                // Event Listener für Timeframe (muss neu angehängt werden, da Dashboard neu gerendert wird)
+                document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        chartTimeframe = btn.dataset.timeframe;
+                        document.querySelectorAll('.timeframe-btn').forEach(b => {
+                            const isSelected = b.dataset.timeframe === chartTimeframe;
+                            b.classList.toggle('bg-primary', isSelected);
+                            b.classList.toggle('hover:bg-blue-700', isSelected);
+                            b.classList.toggle('bg-slate-600', !isSelected);
+                            b.classList.toggle('hover:bg-slate-500', !isSelected);
+                        });
+                        renderDashboardContent();
                     });
-                }
+                });
+
+                // Setze den initialen Timeframe-Button-Status
+                document.querySelectorAll('.timeframe-btn').forEach(b => {
+                    const isSelected = b.dataset.timeframe === chartTimeframe;
+                    b.classList.toggle('bg-primary', isSelected);
+                    b.classList.toggle('hover:bg-blue-700', isSelected);
+                    b.classList.toggle('bg-slate-600', !isSelected);
+                    b.classList.toggle('hover:bg-slate-500', !isSelected);
+                });
             }
             
             // =====================================
@@ -1395,14 +1706,14 @@
             }
 
             startApp();
-        })();
+        })(); // <--- Hinzugefügte schließende Klammer
     </script>
 </head>
 <body class="p-4 sm:p-8">
     <!-- Hauptcontainer für die gesamte App -->
     <div class="bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-4xl mx-auto border border-slate-700 flex-grow">
         <h1 class="text-3xl sm:text-4xl font-bold text-center text-primary mb-2">Sport Challenge 2025/26</h1>
-        <p class="text-center text-slate-400 mb-6">Erreiche 8000 Minuten Sport in einem Jahr.</p>
+        <p class="text-center text-slate-400 mb-6">Ziel: 8000 Minuten Sport in einem Jahr.</p>
 
         <!-- Container für die Anmeldemaske oder die Haupt-App -->
         <div id="app-container">
@@ -1410,27 +1721,6 @@
         </div>
     </div>
     
-    <!-- Mein Profil / ID Abschnitt (Zum Teilen der ID) - NEUE POSITION -->
-    <div id="profile-section" class="hidden w-full max-w-4xl mx-auto mt-6">
-        <div class="card bg-slate-700 p-6 rounded-xl border border-slate-600">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                <h2 class="text-xl font-bold text-white mb-2 sm:mb-0">Ihr Profil: <span class="text-primary" id="profile-nickname"></span></h2>
-                <button id="copy-user-id-btn-global" class="bg-primary text-white text-sm font-semibold py-2 px-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-                        <path d="M7 3.75A2.75 2.75 0 019.75 1h5.5A2.75 2.75 0 0118 3.75v8.5A2.75 2.75 0 0115.25 15h-5.5A2.75 2.75 0 017 12.25v-8.5z" />
-                        <path fill-rule="evenodd" d="M11.375 16.5a1.25 1.25 0 01-1.25-1.25V5.25h1.5v10a.25.25 0 00.25.25h10.25a1.25 1.25 0 01-1.25 1.25h-9.5z" clip-rule="evenodd" />
-                    </svg>
-                    <span>ID kopieren (zum Teilen)</span>
-                </button>
-            </div>
-            <p class="text-sm text-slate-400 mt-2">
-                Volle ID (zum Synchronisieren): 
-                <code id="profile-user-id" class="text-xs text-accent select-all"></code>
-            </p>
-        </div>
-    </div>
-
-
     <!-- Modales Overlay für Warnungen/Meldungen -->
     <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
         <div id="modal-content-wrapper" class="bg-slate-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700">
@@ -1445,4 +1735,5 @@
     </footer>
 </body>
 </html>
+
 
