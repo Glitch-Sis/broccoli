@@ -126,8 +126,9 @@
             overflow: hidden;
             transition: max-height 0.5s ease-in-out;
         }
+        /* FIX: Höhere max-height, um zu verhindern, dass Inhalte abgeschnitten werden */
         .collapsible-content-expanded {
-            max-height: 9999px; /* Erhöht für Coach-Inhalt */
+            max-height: 9999px; /* Sehr hoch, um Kürzung des Coach-Texts zu verhindern */
         }
         .toggle-icon {
             transition: transform 0.3s ease-in-out;
@@ -140,6 +141,36 @@
             text-align: left;
         }
 
+        /* Konfetti CSS */
+        .confetti {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5000;
+        }
+        .confetti-piece {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: var(--confetti-color);
+            opacity: 0;
+            transform-origin: 100% 100%;
+            animation: confetti-fall 3s ease-out forwards;
+        }
+
+        @keyframes confetti-fall {
+            0% {
+                opacity: 1;
+                transform: translateY(-100vh) rotate(0deg);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(100vh) rotate(720deg);
+            }
+        }
     </style>
 
     <!-- Firebase JS SDKs -->
@@ -165,12 +196,14 @@
                 'Kayaking': 1.1,
                 'Schwertkampf': 1.6, 
                 'Taekwondo': 1.7,
+                'Handball': 1.6, // NEU: Handball hinzugefügt
                 'Andere': 1.0
             };
             const STRENGTH_SPORTS = ['Krafttraining', 'HIIT', 'Schwertkampf', 'Taekwondo', 'Yoga']; // Liste der Kraftsportarten
             
             const GOAL_MINUTES = 8000;
             const WHO_GOAL_MINUTES = 15000; // Zweites Ziel (Maximales Ziel für Skalierung)
+            const TARGET_WEEKLY_MINUTES = 300; // 15000 Minuten / 52 Wochen = ca. 288 Minuten -> 300 Minuten als einfache Marke.
 
             // HARDCODED START DATE (Original Challenge Start)
             const GOAL_START_DATE = new Date('2025-09-01T00:00:00Z');
@@ -215,6 +248,43 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
             }
+
+            // =====================================
+            // Confetti Modul
+            // =====================================
+
+            function showConfetti() {
+                const container = document.createElement('div');
+                container.className = 'confetti';
+                document.body.appendChild(container);
+
+                // Farben basierend auf dem Tailwind-Schema
+                const colors = ['#f59e0b', '#3b82f6', '#22c55e', '#ef4444', '#a855f7', '#f3f4f6']; 
+                const piecesCount = 50;
+
+                for (let i = 0; i < piecesCount; i++) {
+                    const piece = document.createElement('div');
+                    piece.className = 'confetti-piece';
+                    
+                    piece.style.setProperty('--confetti-color', colors[Math.floor(Math.random() * colors.length)]);
+                    piece.style.left = `${Math.random() * 100}vw`;
+                    piece.style.top = `${Math.random() * 100}vh`;
+                    piece.style.animationDelay = `${Math.random() * 0.5}s`;
+                    piece.style.animationDuration = `${2.5 + Math.random() * 1}s`;
+                    
+                    const size = 5 + Math.random() * 10;
+                    piece.style.width = `${size}px`;
+                    piece.style.height = `${size}px`;
+                    piece.style.borderRadius = `${Math.random() > 0.5 ? '50%' : '2px'}`;
+                    
+                    container.appendChild(piece);
+                }
+
+                setTimeout(() => {
+                    container.remove();
+                }, 3000);
+            }
+
 
             /** Zeigt das Modal zur Eingabe der Firebase-Konfiguration an */
             function showConfigModal() {
@@ -279,6 +349,24 @@
                 document.body.removeChild(el);
                 showToast(message, 'info');
             }
+
+            /** Kürzt die Firebase UID für die Anzeige. */
+            function formatUserId(uid) {
+                if (!uid) return 'N/A';
+                return uid.substring(0, 8); // Zeigt die ersten 8 Zeichen der UID
+            }
+            
+            /**
+             * Überprüft, ob der übergebene Wert wie eine Firebase UID aussieht (alphanumerisch, lang).
+             * Firebase UIDs sind typischerweise 28 Zeichen lang und URL-sicher (alphanumerisch, - und _).
+             * @param {string} value
+             * @returns {boolean}
+             */
+            function isPotentialUID(value) {
+                // Die UID ist 28 Zeichen lang und enthält Buchstaben, Zahlen, Bindestriche (-) und Unterstriche (_).
+                return value.length === 28 && /^[a-zA-Z0-9_-]+$/.test(value);
+            }
+
 
             // =====================================
             // Firebase-Datenbank-Funktionen
@@ -394,6 +482,25 @@
                     showToast("Fehler beim Speichern der Sportarten.", "error");
                 }
             }
+            
+            /**
+             * Ruft den Spitznamen einer bestimmten UID aus dem Leaderboard ab.
+             * @param {string} uid - Die Benutzer-ID.
+             * @returns {string | null} Den Spitznamen oder null, wenn nicht gefunden.
+             */
+            async function getNicknameByUid(uid) {
+                if (!db) return null;
+                try {
+                    const docRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, uid);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists() && docSnap.data().nickname) {
+                        return docSnap.data().nickname;
+                    }
+                } catch (e) {
+                    console.error("Fehler beim Abrufen des Spitznamens:", e);
+                }
+                return null;
+            }
 
             /**
              * Ruft die Leaderboard-Daten aus Firestore ab (nur statische Minuten und Name).
@@ -505,6 +612,7 @@
                             pEntries = userEntriesCache[p.id]; // Aus Cache
                         } else {
                             // Lade Einträge und cache sie für die Ranglistenberechnung (Startdatum-Ermittlung)
+                            // HINWEIS: Dieser Aufruf könnte fehlschlagen, wenn der User keine Berechtigung hat, private Daten anderer User zu lesen.
                             pEntries = await getSportEntries(p.id); 
                             userEntriesCache[p.id] = pEntries; 
                         }
@@ -551,7 +659,7 @@
                 modalContentWrapper.innerHTML = `
                     <h3 class="text-xl font-bold mb-2 ${title.includes("Fehler") || title.includes("löschen") ? 'text-secondary' : 'text-primary'}">${title}</h3>
                     <p class="text-slate-300 mb-4">${message}</p>
-                    <div class="flex justify-end gap-2 mt-4" id="modal-buttons"></div>
+                    <div class="flex flex-col sm:flex-row justify-end gap-2 mt-4" id="modal-buttons"></div>
                 `;
                 modal.classList.remove('hidden');
 
@@ -561,45 +669,172 @@
                     button.id = btnConfig.id;
                     button.textContent = btnConfig.text;
                     button.className = btnConfig.class;
-                    button.addEventListener('click', btnConfig.onClick);
-                    buttonContainer.appendChild(button);
+                    
+                    // Klonen, um sicherzustellen, dass keine doppelten Listener angehängt werden
+                    const newButton = button.cloneNode(true);
+                    newButton.addEventListener('click', btnConfig.onClick);
+                    buttonContainer.appendChild(newButton);
                 });
             }
             
+            /** Schließt die Benutzererstellung mit dem gegebenen Spitznamen ab. */
+            async function finalizeNewUserCreation(newNickname) {
+                currentUser = newNickname;
+                modal.classList.add('hidden');
+
+                // Setze Initialwerte für Leaderboard-Felder
+                await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { 
+                    nickname: currentUser,
+                    minutes: 0,
+                    weightedMinutes: 0,
+                    lastUpdated: new Date()
+                }, { merge: true });
+                
+                await loadAllData();
+                renderApp();
+            }
+
+            /**
+             * Verwaltet die Erstellung eines neuen Benutzers über das Spitznamen-Feld.
+             */
+            async function handleNewUserCreation(e) {
+                e.preventDefault();
+                const nicknameInput = document.getElementById('nickname-input');
+                const newNickname = nicknameInput.value.trim();
+
+                if (!newNickname) {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+                
+                // Warnung, falls jemand versucht, eine ID als Spitzname zu verwenden
+                if (isPotentialUID(newNickname)) {
+                    showDynamicModal("Ungültiger Spitzname", "Ihre Eingabe sieht aus wie eine ID. Bitte verwenden Sie die 'Synchronisieren'-Option unten, um Ihren Account zu übernehmen.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+
+                finalizeNewUserCreation(newNickname);
+            }
+
+            /**
+             * Verwaltet die Synchronisation eines bestehenden Benutzers über die ID.
+             */
+            async function handleSyncSubmit() {
+                const syncInput = document.getElementById('sync-id-input');
+                const inputId = syncInput.value.trim();
+
+                if (!inputId) {
+                    showDynamicModal("Ungültige Eingabe", "Bitte geben Sie Ihre ID ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    return;
+                }
+
+                if (isPotentialUID(inputId)) {
+                    const potentialNickname = await getNicknameByUid(inputId);
+
+                    if (potentialNickname) {
+                        // Zeige Modal zur Nickname-Adoption (Synchronisation der Daten ist nicht möglich)
+                        showDynamicModal(
+                            "ID erkannt: Spitznamen übernehmen",
+                            `Die eingegebene ID gehört zum Spitznamen **${potentialNickname}**. <br><br>Aufgrund von Sicherheitsregeln kann der alte Trainingsverlauf **nicht** automatisch auf dieses neue Gerät übertragen werden. Möchtest du den Spitznamen **${potentialNickname}** für dein neues Profil übernehmen?`,
+                            [
+                                { 
+                                    id: 'adopt-nickname-btn', 
+                                    text: `Ja, ${potentialNickname} übernehmen`, 
+                                    class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', 
+                                    onClick: () => finalizeNewUserCreation(potentialNickname) 
+                                },
+                                { 
+                                    id: 'cancel-sync-btn', 
+                                    text: 'Abbrechen', 
+                                    class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', 
+                                    onClick: () => modal.classList.add('hidden') 
+                                }
+                            ]
+                        );
+                        return;
+                    } else {
+                        // UID existiert nicht, behandeln als Fehler
+                        showDynamicModal(
+                            "ID nicht erkannt",
+                            `Die eingegebene ID (${formatUserId(inputId)}...) konnte nicht als existierendes Konto gefunden werden. Bitte überprüfen Sie die ID oder erstellen Sie einen neuen Benutzer.`,
+                            [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]
+                        );
+                        return;
+                    }
+                } else {
+                    showDynamicModal("Ungültige ID", "Die Eingabe ist keine gültige ID. Eine ID muss 28 Zeichen lang sein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                }
+            }
+
+
             /** Rendert das Anmeldeformular für den Spitznamen. */
             function renderNicknameForm() {
                 appContainer.innerHTML = `
                     <div class="text-center p-6 bg-slate-700 rounded-xl">
-                        <h2 class="text-2xl font-semibold mb-4 text-white">Willkommen!</h2>
-                        <p class="text-slate-300 mb-4">Geben Sie Ihren Spitznamen ein, um zu beginnen.</p>
-                        <form id="nickname-form" class="space-y-4">
-                            <input type="text" id="nickname-input" placeholder="Ihr Spitzname" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                            <button type="submit" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Starten</button>
-                        </form>
+                        <h2 class="text-2xl font-semibold mb-6 text-white">Willkommen zur Sport Challenge!</h2>
+
+                        <!-- 1. NEUER BENUTZER -->
+                        <div class="text-left mb-6 border border-slate-600 p-4 rounded-lg bg-slate-800">
+                            <h3 class="text-xl font-bold text-primary mb-3">1. Neues Profil erstellen</h3>
+                            <p class="text-sm text-slate-400 mb-4">Erstelle ein neues, leeres Profil in der Rangliste.</p>
+                            <form id="new-user-form" class="space-y-4">
+                                <input type="text" id="nickname-input" placeholder="Wähle deinen Spitznamen (max. 20 Zeichen)" maxlength="20" class="w-full p-3 rounded-lg bg-slate-700 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                <button type="submit" class="w-full bg-accent text-white font-semibold py-3 rounded-lg hover:bg-green-600 transition-colors">
+                                    Profil erstellen und starten
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- 2. BESTEHENDER BENUTZER / SYNCHRONISATION (Collapsible) -->
+                        <div class="text-left border border-slate-600 p-4 rounded-lg bg-slate-800/50">
+                            <button type="button" data-target="sync-section" id="sync-collapsible-btn" class="collapsible-btn w-full flex justify-between items-center text-lg font-bold text-white">
+                                2. Bestehender Benutzer / Synchronisieren
+                                <span class="toggle-icon text-primary transform transition-transform duration-300">▼</span>
+                            </button>
+                            <div id="collapsible-sync-section" class="collapsible-content space-y-4 pt-3">
+                                <p class="text-sm text-slate-400">
+                                    Gib deine volle User ID von deinem anderen Gerät ein, um deinen bestehenden Spitznamen auf diesem neuen Gerät zu übernehmen. Dein Fortschritt startet auf diesem Gerät neu.
+                                </p>
+                                <input type="text" id="sync-id-input" placeholder="Deine volle User ID (28 Zeichen)" class="w-full p-3 rounded-lg bg-slate-700 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
+                                <button type="button" id="sync-button" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">
+                                    Mit ID synchronisieren
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 `;
-                const nicknameForm = document.getElementById('nickname-form');
-                const nicknameInput = document.getElementById('nickname-input');
-                nicknameForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const nickname = nicknameInput.value.trim();
-                    if (nickname) {
-                        currentUser = nickname;
-                        
-                        // Setze Initialwerte für Leaderboard-Felder
-                        await setDoc(doc(db, `/artifacts/${appId}/public/data/leaderboard`, userId), { 
-                            nickname: currentUser,
-                            minutes: 0,
-                            weightedMinutes: 0,
-                            lastUpdated: new Date()
-                        }, { merge: true });
-                        
-                        await loadAllData();
-                        renderApp();
-                    } else {
-                        showDynamicModal("Ungültiger Spitzname", "Bitte geben Sie einen gültigen Spitznamen ein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
-                    }
-                });
+                
+                // Event Listeners für die neuen Funktionen
+                document.getElementById('new-user-form')?.addEventListener('submit', handleNewUserCreation);
+                document.getElementById('sync-button')?.addEventListener('click', handleSyncSubmit);
+                
+                // Lokaler Collapsible-Handler für die Anmeldemaske
+                function setupLoginCollapsible() {
+                    const button = document.getElementById('sync-collapsible-btn');
+                    if (!button) return;
+                    
+                    button.addEventListener('click', () => {
+                        const contentEl = document.getElementById('collapsible-sync-section');
+                        const icon = button.querySelector('.toggle-icon');
+                        const isExpanded = contentEl.classList.contains('collapsible-content-expanded');
+
+                        if (isExpanded) {
+                            // Collapse
+                            contentEl.classList.remove('collapsible-content-expanded');
+                            contentEl.style.maxHeight = '0';
+                            icon.classList.remove('toggle-icon-rotated');
+                            icon.textContent = '▼';
+                        } else {
+                            // Expand
+                            contentEl.classList.add('collapsible-content-expanded');
+                            // Temporär setzen, um max-height zu berechnen, dann korrigieren
+                            contentEl.style.maxHeight = contentEl.scrollHeight + "px"; 
+                            icon.classList.add('toggle-icon-rotated');
+                            icon.textContent = '▲';
+                        }
+                    });
+                }
+                setupLoginCollapsible();
             }
 
             /** Rendert die Haupt-App. */
@@ -678,7 +913,7 @@
                             <!-- Fortschritt Abschnitt (15.000 Min WHO) inkl. Coach (COLLAPSIBLE SECTION) -->
                             <div class="card bg-slate-700 p-6 rounded-xl border-2 border-slate-600">
                                 <button data-target="stretch-goal" class="collapsible-btn w-full flex justify-between items-center text-xl sm:text-2xl font-bold text-accent">
-                                    ⭐ Dein Stretch Goal (WHO fit & stark) 
+                                    ⭐ Dein Fortgeschrittenes Ziel (WHO fit & stark) 
                                     <span class="toggle-icon text-primary transform transition-transform duration-300">▼</span>
                                 </button>
                                 <div id="collapsible-stretch-goal" class="collapsible-content border-t border-slate-600 mt-3" data-rendered="false">
@@ -708,12 +943,16 @@
                                     <div>
                                         <label for="minutes-input" class="block text-slate-300 font-semibold mb-1">Minuten</label>
                                         <input type="number" id="minutes-input" value="0" min="0" class="w-full p-3 rounded-lg bg-slate-800 text-white text-center text-lg font-bold border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
-                                        <div class="mt-2 grid grid-cols-4 gap-2">
+                                        <!-- NEU: grid-cols-3 und +20 Button eingefügt -->
+                                        <div class="mt-2 grid grid-cols-3 gap-2">
                                             <button type="button" data-minutes="5" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+5</button>
                                             <button type="button" data-minutes="10" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+10</button>
                                             <button type="button" data-minutes="15" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+15</button>
+                                            
+                                            <button type="button" data-minutes="20" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+20</button>
                                             <button type="button" data-minutes="30" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+30</button>
                                             <button type="button" data-minutes="45" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+45</button>
+                                            
                                             <button type="button" data-minutes="60" class="minutes-btn text-sm w-full bg-slate-600 text-white font-semibold py-2 rounded-lg hover:bg-slate-500 transition-colors">+60</button>
                                             <button type="button" id="clear-minutes-btn" class="w-full col-span-2 bg-secondary text-white font-semibold py-2 rounded-lg hover:bg-red-600 transition-colors">Löschen</button>
                                         </div>
@@ -774,7 +1013,7 @@
                                         <p class="text-sm text-slate-400 mt-2">Deine Ranglistenposition zählt immer nur die ungewichteten, realen Minuten, um den Vergleich fair zu halten. Die Gewichtung ist für deine persönliche Motivation da.</p>
                                     </div>
                                 </section>
-                                    
+                                        
                                 <!-- Dein Profil Sektion -->
                                 <section class="p-6 rounded-xl bg-slate-800 border border-primary">
                                     <h2 class="text-xl sm:text-2xl font-bold text-white mb-3">Dein Profil</h2>
@@ -930,7 +1169,7 @@
                 
                 // Nach dem Rendern die max-height neu setzen, falls die Sektion bereits offen war
                 if (contentEl.classList.contains('collapsible-content-expanded')) {
-                    // Wichtig: setze max-height nach dem Rendern, um die korrekte Scroll-Höhe zu erhalten (Coach Fix)
+                    // Wichtig: setze max-height nach dem Rendern, um die korrekte Scroll-Höhe zu erhalten
                     contentEl.style.maxHeight = contentEl.scrollHeight + "px";
                 }
             }
@@ -948,6 +1187,9 @@
                 document.querySelectorAll('.collapsible-btn').forEach(button => {
                     button.addEventListener('click', () => {
                         const targetId = button.dataset.target;
+                        // Füge eine Prüfung hinzu, um den Sync-Button der Login-Maske hier zu ignorieren
+                        if (targetId === 'sync-section') return; 
+
                         toggleContentAndRender(targetId);
                     });
                 });
@@ -1015,7 +1257,7 @@
                     `;
                     
                     // Daten abrufen und in Cache speichern
-                    pEntries = await getSportEntries(uid); 
+                    const pEntries = await getSportEntries(uid); 
                     userEntriesCache[uid] = pEntries; 
                     entriesToDisplay = pEntries;
                 }
@@ -1104,7 +1346,8 @@
                 const { requiredProgressPercentage: required8k } = calculateRequiredProgress(GOAL_MINUTES, startDate, endDate);
                 const { requiredProgressPercentage: required15k } = calculateRequiredProgress(WHO_GOAL_MINUTES, startDate, endDate);
                 
-                const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0);
+                // UNGEWICHTETE Minuten verwenden, da die Coach-Ratschläge auf tatsächlicher Zeit basieren sollen
+                const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0); 
                 
                 const progress8k = (totalMinutes / GOAL_MINUTES) * 100;
                 const progress15k = (totalMinutes / WHO_GOAL_MINUTES) * 100;
@@ -1131,7 +1374,7 @@
                         adviceTextHtml = `<p class="text-slate-300">Es wurden noch keine Einträge für diesen Benutzer gefunden. Tragen Sie jetzt Ihre erste Aktivität ein, um die Challenge zu starten!</p>`;
                     } else if (progress8k >= 100) {
                         adviceHeadline = "Ziel A erreicht! Du bist bereits fit.";
-                        adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein **Basis-Ziel von 8.000 Minuten** bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Stretch Goal anzuvisieren.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein **Basis-Ziel von 8.000 Minuten** bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Fortgeschrittene Ziel anzuvisieren.</p>`;
                     } else if (minutesLag8k > 5) {
                         adviceHeadline = "Aufholen nötig: WHO aktiv Ziel in Gefahr.";
                         adviceTextHtml = `<p class="text-slate-300">Dieser Benutzer ist im Rückstand! Der Plan läuft mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Der Fokus sollte auf Regelmäßigkeit liegen.</p>`;
@@ -1144,25 +1387,32 @@
 
                 } else if (focus === 'fit') {
                     // --- Coach Fit (Fokus: Krafttraining + 15k Minuten) ---
-                     if (entries.length === 0) {
+                    const targetWeeklyAchieved = totalMinutes / ((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
+                    const requiredWeeklyMinutes = WHO_GOAL_MINUTES / 52.14; // Ca. 288 Minuten/Woche
+                    
+                    if (entries.length === 0) {
                         adviceHeadline = "Zieleingabe ausstehend.";
                         adviceTextHtml = `<p class="text-slate-300">Füge zuerst Aktivitäten hinzu, um Coach-Feedback zu erhalten.</p>`;
+                    } else if (progress15k >= 100) {
+                        adviceHeadline = "Grandios! Der Benutzer ist 'fit & stark'.";
+                        adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Der Benutzer hat das anspruchsvolle 15.000-Minuten-Fortgeschrittene Ziel erreicht. Er ist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
                     } else if (strengthLag > 10) {
                         adviceHeadline = "Dringend: Krafttraining nachholen!";
                         adviceTextHtml = `<p class="text-slate-300">Die Ausdauer ist super, aber das Krafttraining wird vernachlässigt. Der Benutzer liegt um <span class="font-bold text-secondary">${strengthLag.toFixed(1)} Einheiten</span> hinter dem Plan. Krafttraining ist essenziell für die Erreichung des 'fit & stark' Ziels.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
                         adviceTextHtml += `<p class="text-white">Starte diese Woche mit <span class="font-bold">zwei 15-minütigen</span> Yoga- oder Krafttrainingseinheiten (z.B. HIIT). Priorität: Kraft!</p>`;
-                    } else if (progress15k >= 100) {
-                        adviceHeadline = "Grandios! Der Benutzer ist 'fit & stark'.";
-                        adviceTextHtml = `<p class="text-slate-300">Herzlichen Glückwunsch! Der Benutzer hat das anspruchsvolle 15.000-Minuten-Stretch Goal erreicht. Er ist offiziell 'fit & stark'. Jetzt nur noch die Konsistenz halten!</p>`;
-                    } else if (minutesLag15k > 5) {
-                        adviceHeadline = "Top-Ziel in Sicht: Intensität erhöhen.";
-                        adviceTextHtml = `<p class="text-slate-300">Der Benutzer ist auf dem Weg, aber das 15.000-Minuten-Ziel läuft mit <span class="font-bold text-secondary">${minutesLag15k.toFixed(1)}%</span> Vorsprung davon. Es müssen mehr Minuten pro Woche gesammelt werden, um aufzuholen.</p>`;
+                    } else if (minutesLag15k > 0) {
+                        // Im Rückstand ODER knapp dran (Lag > 0)
+                        adviceHeadline = "Intensität erhöhen: Aufholjagd gestartet!";
+                        adviceTextHtml = `<p class="text-slate-300">Das 15.000-Minuten-Ziel läuft davon. Um aufzuholen und **wöchentlich ca. ${TARGET_WEEKLY_MINUTES} Minuten** zu erreichen, muss die Schlagzahl erhöht werden.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
-                        adviceTextHtml += `<p class="text-white">Wähle eine Aktivität mit hohem Multiplikator (wie Schwimmen oder HIIT) und füge eine <span class="font-bold">zweite Session</span> pro Woche ein.</p>`;
-                    } else {
-                        adviceHeadline = "Voller Flow! Weiter so!";
-                        adviceTextHtml = `<p class="text-slate-300">Der Benutzer hält den Rhythmus! Er ist gut aufgestellt, um sowohl die Krafttrainings-Einheiten zu absolvieren als auch das anspruchsvolle 15.000-Minuten-Ziel zu erreichen.</p>`;
+                        adviceTextHtml += `<p class="text-white">Versuche, drei bis vier Einheiten pro Woche mit höherer Intensität (> 1.2x Gewichtung) zu absolvieren. Konzentriere dich auf die **Konsistenz**!</p>`;
+                    } else if (minutesLag15k <= 0 && progress15k < 100) {
+                        // Im Zeitplan oder leicht voraus, aber Ziel noch nicht erreicht
+                         adviceHeadline = "Voller Flow! Dein Rhythmus ist perfekt.";
+                         adviceTextHtml = `<p class="text-slate-300">Der Benutzer hält den Rhythmus und ist gut aufgestellt, um das anspruchsvolle **15.000-Minuten-Ziel** zu erreichen! Die durchschnittliche wöchentliche Leistung liegt bei **${targetWeeklyAchieved.toFixed(0)} Minuten**.</p>`;
+                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
+                         adviceTextHtml += `<p class="text-white">Halte diese Frequenz! Wichtiger als die Minuten ist jetzt die Integration von Krafttraining (2x/Woche) in den Alltag, um die WHO-Standards komplett zu erfüllen.</p>`;
                     }
                 }
                 
@@ -1184,27 +1434,29 @@
             function renderCoachActiveGoal(myEntries) {
                 const container = document.getElementById('coach-active-container');
                 if (!container) return; 
-                // Coach wird immer für die übergebenen Einträge gerendert
-                container.innerHTML = generateCoachAdviceHtml('active', myEntries);
+                // Coach wird nur für den eigenen User gerendert
+                if (displayedUserId === userId) {
+                     container.innerHTML = generateCoachAdviceHtml('active', myEntries);
+                } else {
+                     container.innerHTML = '';
+                }
             }
 
             /** Rendert den Coach für das WHO fit & stark Ziel (15k + Kraft). */
             function renderCoachFitGoal(myEntries) {
                 const container = document.getElementById('coach-fit-container');
                 if (!container) return; 
-                // Coach wird immer für die übergebenen Einträge gerendert
-                container.innerHTML = generateCoachAdviceHtml('fit', myEntries);
+                 // Coach wird nur für den eigenen User gerendert
+                if (displayedUserId === userId) {
+                    container.innerHTML = generateCoachAdviceHtml('fit', myEntries);
+                } else {
+                    container.innerHTML = '';
+                }
             }
             // =====================================
             // Ende Personal Coach Modul
             // =====================================
             
-            /** Kürzt die Firebase UID für die Anzeige. */
-            function formatUserId(uid) {
-                if (!uid) return 'N/A';
-                return uid.substring(0, 8); // Zeigt die ersten 8 Zeichen der UID
-            }
-
             /** Rendert die Sportarten-Dropdown-Liste neu */
             function renderSportSelect() {
                 const sportSelect = document.getElementById('sport-select');
@@ -1228,7 +1480,7 @@
                     }
                 }
             }
-            
+
             /** Rendert die Liste der Sportarten und ihrer Gewichtungen. */
             function renderSportWeightList() {
                 const sportWeightListEl = document.getElementById('sport-weight-list');
@@ -1291,6 +1543,11 @@
                 let progress = (displayValue / goalMinutes) * 100;
                 let isGoalReached = progress >= 100;
                 
+                // NEU: Konfetti-Effekt, wenn das Ziel erreicht wird (nur in der eigenen Ansicht)
+                if (isGoalReached && isPersonalView) {
+                    showConfetti();
+                }
+                
                 // *** SKALIERUNG FÜR PROPORTIONALITÄT (IMMERS 100% BREITE) ***
                 const relativeWidth = 100; 
                 
@@ -1329,11 +1586,10 @@
                     </div>
                 ` : `<div class="mb-4"></div>`; // Platzhalter für Konsistenz
 
-                // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL und nur in eigener Ansicht) ---
+                // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL) ---
                 let strengthCounter = '';
-                // HINWEIS: Der Krafttraining-Counter wird nur für den aktuell eingeloggten Benutzer angezeigt,
-                // da die WHO-Empfehlung ein individuelles Ziel ist.
-                if (idSuffix === '15000' && isPersonalView) { 
+                // NEU: Counter wird immer für die angezeigten Daten gerendert (kein isPersonalView Check)
+                if (idSuffix === '15000') { 
                     const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(myEntries, startDate, endDate); 
                     const isGoalMet = actualUnits >= requiredUnits;
                     const strengthTooltipContent = `Eingerechnete Sportarten: ${STRENGTH_SPORTS.join(', ')}`;
@@ -1353,6 +1609,7 @@
                                             </span>
                                         </h3>
                                     </div>
+                                    ${isPersonalView ? '' : `<span class="text-xs text-slate-500 bg-slate-700 px-2 py-1 rounded-full font-semibold">Daten von ${formatUserId(displayedUserId)}...</span>`}
                                 </div>
 
                                 <!-- Zeile 2: Sollwert und Status (linksbündig) -->
@@ -1545,8 +1802,8 @@
                             const rowClasses = isActiveUser 
                                 ? 'bg-primary/30 border-primary shadow-lg' 
                                 : isCurrentUser
-                                        ? 'bg-slate-700/60 border-slate-500'
-                                        : 'bg-slate-800/80 border-slate-700 hover:bg-slate-700';
+                                            ? 'bg-slate-700/60 border-slate-500'
+                                            : 'bg-slate-800/80 border-slate-700 hover:bg-slate-700';
 
                             const rankColor = isLeading ? 'text-accent' : isActiveUser ? 'text-primary' : 'text-slate-400';
                             const nicknameColor = isActiveUser ? 'text-white font-extrabold' : 'text-white font-semibold';
@@ -1811,7 +2068,7 @@
             }
             
             // =====================================
-            // Formular-Handling
+            // Formular-Handling (CRUD-Funktionen für Einträge)
             // =====================================
             async function handleFormSubmit(e) {
                 e.preventDefault();
