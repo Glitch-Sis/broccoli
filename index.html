@@ -713,7 +713,10 @@
                     renderApp();
                 } catch (error) {
                     console.error("Fehler beim Laden der App-Daten: ", error);
-                    showDynamicModal("Fehler", "Daten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    // NEU: Nur einen Toast zeigen, um die UI nicht zu blockieren, aber keinen Absturz verursachen
+                    showToast("Fehler beim Laden der App-Daten.", 'error'); 
+                    // Wenn wir hier sind, versuchen wir trotzdem zu rendern, auch wenn Daten fehlen könnten
+                    renderApp();
                 }
             }
 
@@ -802,51 +805,63 @@
                 }
 
                 if (isPotentialUID(inputId)) {
-                    const existingNickname = await getNicknameByUid(inputId);
+                    // Temporäre UID der aktuellen (anonymen) Session speichern, falls nötig
+                    const currentAnonUid = userId;
+                    
+                    try {
+                        // Profil in der Leaderboard-Collection suchen
+                        const existingNickname = await getNicknameByUid(inputId);
 
-                    if (existingNickname) {
-                        // Profil gefunden: Synchronisierung bestätigen und ID übernehmen
-                        showDynamicModal(
-                            "Profil wiederhergestellt",
-                            `Die eingegebene ID gehört zum Profil <span class="font-bold text-accent">${existingNickname}</span>. Wir werden nun den Zugriff auf dieses Konto wiederherstellen und Ihre Trainingsdaten laden.`,
-                            [
-                                { 
-                                    id: 'sync-confirm-btn', 
-                                    text: `Als ${existingNickname} fortfahren`, 
-                                    class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', 
-                                    onClick: async () => {
-                                        modal.classList.add('hidden');
-                                        
-                                        // *** WICHTIGSTER SCHRITT: WECHSEL ZUM VORHANDENEN USER ***
-                                        // Setze die globale userId und currentUser auf die Werte des bestehenden Profils.
-                                        // Alle weiteren Datenbank-Operationen (Hinzufügen, Laden, Löschen) verwenden diese ID.
-                                        userId = inputId; 
-                                        currentUser = existingNickname;
-                                        
-                                        showToast(`Zugriff auf ${currentUser} wiederhergestellt!`, 'success');
-                                        
-                                        // Lade Daten für den neuen (synchronisierten) User
-                                        await loadAllData(); 
-                                        renderApp();
-                                    } 
-                                },
-                                { 
-                                    id: 'cancel-sync-btn', 
-                                    text: 'Abbrechen', 
-                                    class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', 
-                                    onClick: () => modal.classList.add('hidden') 
-                                }
-                            ]
-                        );
-                        return;
-                    } else {
-                        // UID existiert nicht
-                        showDynamicModal(
-                            "ID nicht erkannt",
-                            `Die eingegebene ID (${formatUserId(inputId)}...) konnte nicht als existierendes Konto gefunden werden. Bitte überprüfen Sie die ID oder erstellen Sie einen neuen Benutzer.`,
+                        if (existingNickname) {
+                            // Profil gefunden: Synchronisierung bestätigen und ID übernehmen
+                            showDynamicModal(
+                                "Zugriff auf Profil übernehmen",
+                                `Die eingegebene ID gehört zum Profil <span class="font-bold text-accent">${existingNickname}</span>. Wir werden nun den Zugriff auf dieses Konto übernehmen und Ihre Trainingsdaten laden.`,
+                                [
+                                    { 
+                                        id: 'sync-confirm-btn', 
+                                        text: `Zugriff auf ${existingNickname} übernehmen`, 
+                                        class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', 
+                                        onClick: async () => {
+                                            modal.classList.add('hidden');
+                                            
+                                            // *** WICHTIGSTER SCHRITT: WECHSEL ZUM VORHANDENEN USER ***
+                                            // Setze die globale userId und currentUser auf die Werte des bestehenden Profils.
+                                            userId = inputId; 
+                                            currentUser = existingNickname;
+                                            
+                                            showToast(`Zugriff auf ${currentUser} synchronisiert!`, 'success');
+                                            
+                                            // Lade Daten für den synchronisierten User
+                                            await loadAllData(); 
+                                            renderApp();
+                                        } 
+                                    },
+                                    { 
+                                        id: 'cancel-sync-btn', 
+                                        text: 'Abbrechen', 
+                                        class: 'bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-slate-500 transition-colors', 
+                                        onClick: () => modal.classList.add('hidden') 
+                                    }
+                                ]
+                            );
+                            return;
+                        } else {
+                            // UID existiert nicht
+                            showDynamicModal(
+                                "ID nicht erkannt",
+                                `Die eingegebene ID (${formatUserId(inputId)}...) konnte nicht als existierendes Konto gefunden werden. Bitte überprüfen Sie die ID oder erstellen Sie einen neuen Benutzer.`,
+                                [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]
+                            );
+                            return;
+                        }
+                    } catch (error) {
+                         // Fehler beim Laden des Spitznamens (Datenbankfehler)
+                        console.error("Fehler beim Synchronisierungsversuch:", error);
+                        showDynamicModal("Datenbankfehler", "Es ist ein Fehler bei der Kommunikation mit der Datenbank aufgetreten. Bitte prüfen Sie Ihre Verbindung oder versuchen Sie es später erneut.", 
                             [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]
                         );
-                        return;
+                        // Bleibt auf der Anmeldemaske
                     }
                 } else {
                     showDynamicModal("Ungültige ID", "Die Eingabe ist keine gültige ID. Eine ID muss 28 Zeichen lang sein.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
@@ -2353,7 +2368,9 @@
                     }
                 } catch (error) {
                     console.error("Fehler beim Laden der Benutzerdaten:", error);
-                    showDynamicModal("Fehler", "Benutzerdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    // NEU: Wenn Firebase-Fehler auftreten, auf dem Anmeldebildschirm bleiben und eine Fehlermeldung zeigen
+                    showDynamicModal("Datenbankfehler", "Die Verbindung zur Datenbank konnte nicht hergestellt werden. Bitte überprüfen Sie Ihre Firebase-Konfiguration oder versuchen Sie es später erneut.", [{ id: 'modal-close-btn', text: 'OK', class: 'w-full bg-primary text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition-colors', onClick: () => modal.classList.add('hidden') }]);
+                    renderNicknameForm(); // Bleibt auf der Anmeldemaske
                 }
             }
             
@@ -2370,6 +2387,7 @@
                 }
                 
                 try {
+                    // Sign in anonymously first to get a temporary UID for the session
                     if (initialAuthToken) {
                         await signInWithCustomToken(auth, initialAuthToken);
                     } else {
@@ -2381,6 +2399,7 @@
                     return;
                 }
 
+                // Initial UID from the anonymous session
                 userId = auth.currentUser.uid;
                 displayedUserId = userId;
 
