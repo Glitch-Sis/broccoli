@@ -126,9 +126,9 @@
             overflow: hidden;
             transition: max-height 0.5s ease-in-out;
         }
-        /* FIX: Höhere max-height, um zu verhindern, dass Inhalte abgeschnitten werden */
+        /* FIX: Max-height bleibt bei 9999px und wird dynamisch gesetzt, um das Abschneiden zu verhindern. */
         .collapsible-content-expanded {
-            max-height: 9999px; /* Sehr hoch, um Kürzung des Coach-Texts zu verhindern */
+            max-height: 9999px; 
         }
         .toggle-icon {
             transition: transform 0.3s ease-in-out;
@@ -179,6 +179,10 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
+        let app = null; 
+        let auth = null;
+        let db = null;
+
         (async function() {
             // =====================================
             // Globale Variablen und UI-Elemente
@@ -200,10 +204,12 @@
                 'Andere': 1.0
             };
             const STRENGTH_SPORTS = ['Krafttraining', 'HIIT', 'Schwertkampf', 'Taekwondo', 'Yoga']; // Liste der Kraftsportarten
-            
+            const MILESTONES = [1000, 3000, 5000, 8000, 10000, 12500, 15000]; // Meilensteine in Minuten
+
             const GOAL_MINUTES = 8000;
             const WHO_GOAL_MINUTES = 15000; // Zweites Ziel (Maximales Ziel für Skalierung)
             const TARGET_WEEKLY_MINUTES = 300; // 15000 Minuten / 52 Wochen = ca. 288 Minuten -> 300 Minuten als einfache Marke.
+            const POWER_STREAK_MINUTES = 150; // Wöchentliches Power-Streak Ziel
 
             // HARDCODED START DATE (Original Challenge Start)
             const GOAL_START_DATE = new Date('2025-09-01T00:00:00Z');
@@ -239,18 +245,14 @@
             const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : '';
             
-            let app = null;
-            let auth = null;
-            let db = null;
-            
             if (firebaseConfig.projectId) {
-                app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
+                app = initializeApp(firebaseConfig); // Zuweisung zur Modul-Scope-Variable
+                auth = getAuth(app); // Zuweisung zur Modul-Scope-Variable
+                db = getFirestore(app); // Zuweisung zur Modul-Scope-Variable
             }
 
             // =====================================
-            // Confetti Modul
+            // Confetti / Belohnungen Modul
             // =====================================
 
             function showConfetti() {
@@ -283,6 +285,73 @@
                 setTimeout(() => {
                     container.remove();
                 }, 3000);
+            }
+
+            /** Überprüft wöchentlichen Streak und Meilensteine und löst Belohnungen aus */
+            async function checkAndTriggerRewards(currentTotalMinutes) {
+                if (!userId || !db) return;
+
+                const userRewardsPath = `/artifacts/${appId}/users/${userId}/rewards/status`;
+                const rewardsDocRef = doc(db, userRewardsPath);
+                const rewardsDoc = await getDoc(rewardsDocRef);
+                const status = rewardsDoc.exists() ? rewardsDoc.data() : { lastCheckedWeek: null, achievedMilestones: [] };
+
+                const now = new Date();
+                // Hole die Kalenderwochennummer (ISO Week Date)
+                const currentWeek = now.getFullYear() * 100 + getISOWeek(now);
+                
+                // --- 1. Wöchentlicher Power-Streak Check (150 Minuten) ---
+                if (status.lastCheckedWeek !== currentWeek) {
+                    const lastWeekStart = new Date();
+                    lastWeekStart.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1) - 7); // Start von letzter Woche (Mo)
+                    const lastWeekEnd = new Date(lastWeekStart);
+                    lastWeekEnd.setDate(lastWeekEnd.getDate() + 7); // Ende von letzter Woche (So)
+
+                    const lastWeekMinutes = entries.filter(entry => {
+                        const entryDate = entry.timestamp.toDate ? entry.timestamp.toDate() : new Date(entry.timestamp);
+                        return entryDate >= lastWeekStart && entryDate < lastWeekEnd;
+                    }).reduce((sum, entry) => sum + entry.minutes, 0);
+
+                    if (lastWeekMinutes >= POWER_STREAK_MINUTES) {
+                        showConfetti();
+                        showToast("Wochen-Ziel (150 Min) erreicht! 🎉 Dein Power-Streak lebt!", 'success');
+                    }
+                    
+                    // Speichere die aktuelle Woche als zuletzt geprüft, um es nur einmal pro Woche auszulösen
+                    await setDoc(rewardsDocRef, { ...status, lastCheckedWeek: currentWeek }, { merge: true });
+                }
+
+                // --- 2. Meilenstein-Check (1000er Schritte) ---
+                const totalMinutes = Math.floor(currentTotalMinutes);
+                const newAchievedMilestones = [...status.achievedMilestones];
+                let milestoneReached = false;
+
+                MILESTONES.forEach(milestone => {
+                    if (totalMinutes >= milestone && !newAchievedMilestones.includes(milestone)) {
+                        newAchievedMilestones.push(milestone);
+                        milestoneReached = true;
+                        
+                        showDynamicModal(
+                            "Meilenstein freigeschaltet!",
+                            `Herzlichen Glückwunsch! Du hast die unglaubliche Marke von <span class="font-bold text-accent">${milestone.toLocaleString('de-DE')} Minuten</span> Sport erreicht! Das ist eine fantastische Leistung.`,
+                            [{ id: 'modal-close-btn', text: 'Jubel!', class: 'w-full bg-accent text-white font-semibold py-2 rounded-lg hover:bg-green-600 transition-colors', onClick: () => modal.classList.add('hidden') }]
+                        );
+                        showConfetti();
+                    }
+                });
+
+                if (milestoneReached) {
+                    await setDoc(rewardsDocRef, { ...status, achievedMilestones: newAchievedMilestones }, { merge: true });
+                }
+            }
+            
+            /** Hilfsfunktion zur Berechnung der ISO-Kalenderwoche. */
+            function getISOWeek(d) {
+                d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+                var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+                return weekNo;
             }
 
 
@@ -497,7 +566,7 @@
                         return docSnap.data().nickname;
                     }
                 } catch (e) {
-                    console.error("Fehler beim Abrufen des Spitznamens:", e);
+                    // console.error("Fehler beim Abrufen des Spitznamens:", e); // Nicht im Sync-Flow loggen
                 }
                 return null;
             }
@@ -597,6 +666,10 @@
                     userChallengeStartDate = getChallengePeriod(entries).startDate;
                     const userSports = await getUserDefinedSports(userId);
                     allSports = { ...SPORT_WEIGHTS, ...userSports };
+
+                    // Meilensteine und Streaks prüfen (nur für den eigenen User)
+                    const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0); 
+                    await checkAndTriggerRewards(totalMinutes);
                     
                     // 2. Rohdaten des Leaderboards laden
                     const rawParticipants = await getLeaderboard();
@@ -729,19 +802,33 @@
                 }
 
                 if (isPotentialUID(inputId)) {
-                    const potentialNickname = await getNicknameByUid(inputId);
+                    const existingNickname = await getNicknameByUid(inputId);
 
-                    if (potentialNickname) {
-                        // Zeige Modal zur Nickname-Adoption (Synchronisation der Daten ist nicht möglich)
+                    if (existingNickname) {
+                        // Profil gefunden: Synchronisierung bestätigen und ID übernehmen
                         showDynamicModal(
-                            "ID erkannt: Spitznamen übernehmen",
-                            `Die eingegebene ID gehört zum Spitznamen **${potentialNickname}**. <br><br>Aufgrund von Sicherheitsregeln kann der alte Trainingsverlauf **nicht** automatisch auf dieses neue Gerät übertragen werden. Möchtest du den Spitznamen **${potentialNickname}** für dein neues Profil übernehmen?`,
+                            "Profil wiederhergestellt",
+                            `Die eingegebene ID gehört zum Profil <span class="font-bold text-accent">${existingNickname}</span>. Wir werden nun den Zugriff auf dieses Konto wiederherstellen und Ihre Trainingsdaten laden.`,
                             [
                                 { 
-                                    id: 'adopt-nickname-btn', 
-                                    text: `Ja, ${potentialNickname} übernehmen`, 
+                                    id: 'sync-confirm-btn', 
+                                    text: `Als ${existingNickname} fortfahren`, 
                                     class: 'bg-accent text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors', 
-                                    onClick: () => finalizeNewUserCreation(potentialNickname) 
+                                    onClick: async () => {
+                                        modal.classList.add('hidden');
+                                        
+                                        // *** WICHTIGSTER SCHRITT: WECHSEL ZUM VORHANDENEN USER ***
+                                        // Setze die globale userId und currentUser auf die Werte des bestehenden Profils.
+                                        // Alle weiteren Datenbank-Operationen (Hinzufügen, Laden, Löschen) verwenden diese ID.
+                                        userId = inputId; 
+                                        currentUser = existingNickname;
+                                        
+                                        showToast(`Zugriff auf ${currentUser} wiederhergestellt!`, 'success');
+                                        
+                                        // Lade Daten für den neuen (synchronisierten) User
+                                        await loadAllData(); 
+                                        renderApp();
+                                    } 
                                 },
                                 { 
                                     id: 'cancel-sync-btn', 
@@ -753,7 +840,7 @@
                         );
                         return;
                     } else {
-                        // UID existiert nicht, behandeln als Fehler
+                        // UID existiert nicht
                         showDynamicModal(
                             "ID nicht erkannt",
                             `Die eingegebene ID (${formatUserId(inputId)}...) konnte nicht als existierendes Konto gefunden werden. Bitte überprüfen Sie die ID oder erstellen Sie einen neuen Benutzer.`,
@@ -793,7 +880,7 @@
                             </button>
                             <div id="collapsible-sync-section" class="collapsible-content space-y-4 pt-3">
                                 <p class="text-sm text-slate-400">
-                                    Gib deine volle User ID von deinem anderen Gerät ein, um deinen bestehenden Spitznamen auf diesem neuen Gerät zu übernehmen. Dein Fortschritt startet auf diesem Gerät neu.
+                                    Gib deine volle User ID von deinem anderen Gerät ein, um deine Daten zu übernehmen und fortzufahren.
                                 </p>
                                 <input type="text" id="sync-id-input" placeholder="Deine volle User ID (28 Zeichen)" class="w-full p-3 rounded-lg bg-slate-700 text-white border border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary">
                                 <button type="button" id="sync-button" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">
@@ -1346,7 +1433,7 @@
                 const { requiredProgressPercentage: required8k } = calculateRequiredProgress(GOAL_MINUTES, startDate, endDate);
                 const { requiredProgressPercentage: required15k } = calculateRequiredProgress(WHO_GOAL_MINUTES, startDate, endDate);
                 
-                // UNGEWICHTETE Minuten verwenden, da die Coach-Ratschläge auf tatsächlicher Zeit basieren sollen
+                // UNGEWICHTETE Minuten verwenden
                 const totalMinutes = entries.reduce((sum, entry) => sum + entry.minutes, 0); 
                 
                 const progress8k = (totalMinutes / GOAL_MINUTES) * 100;
@@ -1374,7 +1461,7 @@
                         adviceTextHtml = `<p class="text-slate-300">Es wurden noch keine Einträge für diesen Benutzer gefunden. Tragen Sie jetzt Ihre erste Aktivität ein, um die Challenge zu starten!</p>`;
                     } else if (progress8k >= 100) {
                         adviceHeadline = "Ziel A erreicht! Du bist bereits fit.";
-                        adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein **Basis-Ziel von 8.000 Minuten** bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Fortgeschrittene Ziel anzuvisieren.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Fantastisch! Du hast dein Basis-Ziel von 8.000 Minuten bereits überschritten. Jetzt geht es darum, die Konsistenz zu halten oder das Fortgeschrittene Ziel anzuvisieren.</p>`;
                     } else if (minutesLag8k > 5) {
                         adviceHeadline = "Aufholen nötig: WHO aktiv Ziel in Gefahr.";
                         adviceTextHtml = `<p class="text-slate-300">Dieser Benutzer ist im Rückstand! Der Plan läuft mit <span class="font-bold text-secondary">${minutesLag8k.toFixed(1)}%</span> Vorsprung davon. Der Fokus sollte auf Regelmäßigkeit liegen.</p>`;
@@ -1387,8 +1474,9 @@
 
                 } else if (focus === 'fit') {
                     // --- Coach Fit (Fokus: Krafttraining + 15k Minuten) ---
-                    const targetWeeklyAchieved = totalMinutes / ((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
-                    const requiredWeeklyMinutes = WHO_GOAL_MINUTES / 52.14; // Ca. 288 Minuten/Woche
+                    const totalDurationWeeks = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7);
+                    const elapsedWeeks = (new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7);
+                    const averageWeeklyMinutes = totalMinutes / elapsedWeeks;
                     
                     if (entries.length === 0) {
                         adviceHeadline = "Zieleingabe ausstehend.";
@@ -1404,15 +1492,15 @@
                     } else if (minutesLag15k > 0) {
                         // Im Rückstand ODER knapp dran (Lag > 0)
                         adviceHeadline = "Intensität erhöhen: Aufholjagd gestartet!";
-                        adviceTextHtml = `<p class="text-slate-300">Das 15.000-Minuten-Ziel läuft davon. Um aufzuholen und **wöchentlich ca. ${TARGET_WEEKLY_MINUTES} Minuten** zu erreichen, muss die Schlagzahl erhöht werden.</p>`;
+                        adviceTextHtml = `<p class="text-slate-300">Das 15.000-Minuten-Ziel läuft davon. Derzeit sammelst du durchschnittlich <span class="font-bold">${averageWeeklyMinutes.toFixed(0)} Minuten</span> pro Woche. Um das Ziel zu erreichen, sind ca. ${TARGET_WEEKLY_MINUTES} Minuten pro Woche nötig. Es muss die Schlagzahl erhöht werden.</p>`;
                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
-                        adviceTextHtml += `<p class="text-white">Versuche, drei bis vier Einheiten pro Woche mit höherer Intensität (> 1.2x Gewichtung) zu absolvieren. Konzentriere dich auf die **Konsistenz**!</p>`;
+                        adviceTextHtml += `<p class="text-white">Fokussiere dich auf <span class="font-bold">drei bis vier Einheiten</span> pro Woche. Füge pro Einheit <span class="font-bold">mindestens 15 Minuten</span> hinzu, um die Lücke zu schließen.</p>`;
                     } else if (minutesLag15k <= 0 && progress15k < 100) {
                         // Im Zeitplan oder leicht voraus, aber Ziel noch nicht erreicht
-                         adviceHeadline = "Voller Flow! Dein Rhythmus ist perfekt.";
-                         adviceTextHtml = `<p class="text-slate-300">Der Benutzer hält den Rhythmus und ist gut aufgestellt, um das anspruchsvolle **15.000-Minuten-Ziel** zu erreichen! Die durchschnittliche wöchentliche Leistung liegt bei **${targetWeeklyAchieved.toFixed(0)} Minuten**.</p>`;
-                         adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
-                         adviceTextHtml += `<p class="text-white">Halte diese Frequenz! Wichtiger als die Minuten ist jetzt die Integration von Krafttraining (2x/Woche) in den Alltag, um die WHO-Standards komplett zu erfüllen.</p>`;
+                        adviceHeadline = "Voller Flow! Dein Rhythmus ist perfekt.";
+                        adviceTextHtml = `<p class="text-slate-300">Der Benutzer hält den Rhythmus und ist gut aufgestellt, um das anspruchsvolle 15.000-Minuten-Ziel zu erreichen! Die durchschnittliche wöchentliche Leistung liegt bei <span class="font-bold">${averageWeeklyMinutes.toFixed(0)} Minuten</span> (Ziel: ca. ${TARGET_WEEKLY_MINUTES} Min).</p>`;
+                        adviceTextHtml += `<h3 class="text-lg font-bold text-primary mt-3">Mission:</h3>`;
+                        adviceTextHtml += `<p class="text-white">Halte diese Frequenz! Wichtiger als die Minuten ist jetzt die Integration von <span class="font-bold">Krafttraining (2x/Woche)</span> in den Alltag, um die WHO-Standards komplett zu erfüllen.</p>`;
                     }
                 }
                 
@@ -1543,8 +1631,8 @@
                 let progress = (displayValue / goalMinutes) * 100;
                 let isGoalReached = progress >= 100;
                 
-                // NEU: Konfetti-Effekt, wenn das Ziel erreicht wird (nur in der eigenen Ansicht)
-                if (isGoalReached && isPersonalView) {
+                // Konfetti-Effekt, wenn das Ziel erreicht wird (nur in der eigenen Ansicht)
+                if (isGoalReached && isPersonalView && (idSuffix === '8000' || idSuffix === '15000')) {
                     showConfetti();
                 }
                 
@@ -1588,7 +1676,7 @@
 
                 // --- KRAFTTRAINING COUNTER (NUR BEI 15000er ZIEL) ---
                 let strengthCounter = '';
-                // NEU: Counter wird immer für die angezeigten Daten gerendert (kein isPersonalView Check)
+                // Counter wird immer für die angezeigten Daten gerendert
                 if (idSuffix === '15000') { 
                     const { actualUnits, requiredUnits } = calculateStrengthTrainingProgress(myEntries, startDate, endDate); 
                     const isGoalMet = actualUnits >= requiredUnits;
